@@ -45,6 +45,7 @@ App_State :: struct {
 	max_iterations:      u32,
 	needs_recompute:     bool,
 	use_simd:            bool, // Toggle for SIMD vs scalar computation
+	use_gpu:             bool, // Toggle for GPU vs CPU rendering
 	palette:             Palette_Type, // Current color palette
 	// Mouse interaction state
 	mouse_dragging:      bool,

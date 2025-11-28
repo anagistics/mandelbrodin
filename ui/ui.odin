@@ -9,7 +9,7 @@ Render_control_panel :: proc(state: ^app.App_State, width: int, height: int) {
 	topRightControl := imgui.Vec2{f32(width), 0}
 	bottomLeftControl := imgui.Vec2{0, f32(height)}
 	imgui.SetNextWindowPos(imgui.Vec2{f32(width), 0}, .Once)
-	imgui.SetNextWindowSize(imgui.Vec2{280, f32(height) - 20}, .Once)
+	imgui.SetNextWindowSize(imgui.Vec2{300, f32(height) - 20}, .Once)
 
 	flags := imgui.WindowFlags{.NoCollapse, .NoMove}
 	if imgui.Begin("Controls", nil, flags) {
@@ -36,12 +36,24 @@ Render_control_panel :: proc(state: ^app.App_State, width: int, height: int) {
 		time_str := fmt.ctprintf("  %.2f ms", state.computation_time_ms)
 		imgui.Text(time_str)
 
-		// SIMD toggle
-		if imgui.Checkbox("Use SIMD", &state.use_simd) {
+		// Rendering mode toggles
+		if imgui.Checkbox("Use GPU", &state.use_gpu) {
 			state.needs_recompute = true
 		}
 		if imgui.IsItemHovered() {
-			imgui.SetTooltip("Toggle SIMD vectorization (AVX 4-wide)")
+			imgui.SetTooltip("Toggle GPU shader vs CPU computation")
+		}
+
+		// SIMD toggle (only relevant in CPU mode)
+		if !state.use_gpu {
+			if imgui.Checkbox("Use SIMD", &state.use_simd) {
+				state.needs_recompute = true
+			}
+			if imgui.IsItemHovered() {
+				imgui.SetTooltip("Toggle SIMD vectorization (AVX 4-wide)")
+			}
+		} else {
+			imgui.TextDisabled("SIMD (CPU only)")
 		}
 
 		imgui.Separator()

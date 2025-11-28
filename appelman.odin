@@ -3,13 +3,15 @@ package main
 import "core:fmt"
 import "core:mem"
 import "core:time"
+import gl "vendor:OpenGL"
 import imgui "vendor:imgui"
 import imgui_sdl2 "vendor:imgui/imgui_impl_sdl2"
-import imgui_sdlrenderer2 "vendor:imgui/imgui_impl_sdlrenderer2"
+import imgui_opengl3 "vendor:imgui/imgui_impl_opengl3"
 import SDL "vendor:sdl2"
 
 import app "app"
 import mb "mandelbrot"
+import renderer "renderer"
 import ui "ui"
 
 WIDTH :: 800
@@ -26,6 +28,7 @@ main :: proc() {
 		needs_recompute     = true,
 		computation_time_ms = 0.0,
 		use_simd            = true, // Use SIMD by default
+		use_gpu             = false, // Use CPU by default
 		palette             = .Classic, // Default palette
 	}
 	defer delete(state.pixels)
@@ -36,13 +39,18 @@ main :: proc() {
 	}
 	defer SDL.Quit()
 
+	// Set OpenGL attributes
+	SDL.GL_SetAttribute(.CONTEXT_MAJOR_VERSION, 3)
+	SDL.GL_SetAttribute(.CONTEXT_MINOR_VERSION, 3)
+	SDL.GL_SetAttribute(.CONTEXT_PROFILE_MASK, i32(SDL.GLprofile.CORE))
+
 	window := SDL.CreateWindow(
-		"Mandelbrot Set - ImGui",
+		"Mandelbrot Set - GPU/CPU Toggle",
 		SDL.WINDOWPOS_CENTERED,
 		SDL.WINDOWPOS_CENTERED,
 		WIDTH + 300,
 		HEIGHT,
-		SDL.WINDOW_SHOWN,
+		{.OPENGL, .SHOWN},
 	)
 	if window == nil {
 		fmt.eprintln("SDL_CreateWindow Error:", SDL.GetError())
@@ -50,12 +58,18 @@ main :: proc() {
 	}
 	defer SDL.DestroyWindow(window)
 
-	renderer := SDL.CreateRenderer(window, -1, SDL.RENDERER_ACCELERATED)
-	if renderer == nil {
-		fmt.eprintln("SDL_CreateRenderer Error:", SDL.GetError())
+	gl_context := SDL.GL_CreateContext(window)
+	if gl_context == nil {
+		fmt.eprintln("SDL_GL_CreateContext Error:", SDL.GetError())
 		return
 	}
-	defer SDL.DestroyRenderer(renderer)
+	defer SDL.GL_DeleteContext(gl_context)
+
+	// Load OpenGL functions
+	gl.load_up_to(3, 3, SDL.gl_set_proc_address)
+
+	// Enable vsync
+	SDL.GL_SetSwapInterval(1)
 
 	// Initialize ImGui
 	imgui.CHECKVERSION()
@@ -65,20 +79,21 @@ main :: proc() {
 	io := imgui.GetIO()
 	io.ConfigFlags += {.NavEnableKeyboard}
 
-	imgui_sdl2.InitForSDLRenderer(window, renderer)
+	imgui_sdl2.InitForOpenGL(window, gl_context)
 	defer imgui_sdl2.Shutdown()
 
-	imgui_sdlrenderer2.Init(renderer)
-	defer imgui_sdlrenderer2.Shutdown()
+	imgui_opengl3.Init("#version 330")
+	defer imgui_opengl3.Shutdown()
 
 	imgui.StyleColorsDark(nil)
 
-	texture := SDL.CreateTexture(renderer, SDL.PixelFormatEnum.ARGB8888, .STATIC, WIDTH, HEIGHT)
-	if texture == nil {
-		fmt.eprintln("SDL_CreateTexture Error:", SDL.GetError())
+	// Initialize renderer
+	render_context: renderer.Renderer
+	if !renderer.Init(&render_context, WIDTH, HEIGHT) {
+		fmt.eprintln("Failed to initialize renderer")
 		return
 	}
-	defer SDL.DestroyTexture(texture)
+	defer renderer.Destroy(&render_context)
 
 	running := true
 	for running {
@@ -216,47 +231,56 @@ main :: proc() {
 			}
 		}
 
-		// Recompute if needed
-		if state.needs_recompute {
+		// Recompute if needed (CPU mode only)
+		if state.needs_recompute && !state.use_gpu {
 			start_time := time.now()
 			mb.Compute(&state, WIDTH, HEIGHT)
 			end_time := time.now()
 			duration := time.diff(start_time, end_time)
 			state.computation_time_ms = time.duration_milliseconds(duration)
-
-			SDL.UpdateTexture(texture, nil, raw_data(state.pixels), WIDTH * size_of(u32))
 			state.needs_recompute = false
 		}
 
 		// Start ImGui frame
-		imgui_sdlrenderer2.NewFrame()
+		imgui_opengl3.NewFrame()
 		imgui_sdl2.NewFrame()
 		imgui.NewFrame()
 
-		// Render Mandelbrot texture
-		SDL.SetRenderDrawColor(renderer, 0, 0, 0, 255)
-		SDL.RenderClear(renderer)
+		// Render Mandelbrot
+		gl.Viewport(0, 0, WIDTH, HEIGHT)
+		gl.Scissor(0, 0, WIDTH, HEIGHT)
+		gl.Enable(gl.SCISSOR_TEST)
+		gl.ClearColor(0.0, 0.0, 0.0, 1.0)
+		gl.Clear(gl.COLOR_BUFFER_BIT)
 
-		mandelbrot_rect := SDL.Rect{0, 0, WIDTH, HEIGHT}
-		SDL.RenderCopy(renderer, texture, nil, &mandelbrot_rect)
+		if state.use_gpu {
+			// GPU rendering - compute in shader
+			start_time := time.now()
+			renderer.Render_GPU(&render_context, &state, WIDTH, HEIGHT)
+			end_time := time.now()
+			duration := time.diff(start_time, end_time)
+			state.computation_time_ms = time.duration_milliseconds(duration)
+			state.needs_recompute = false
+		} else {
+			// CPU rendering - display precomputed texture
+			renderer.Render_CPU(&render_context, state.pixels, WIDTH, HEIGHT)
+		}
 
-		// Draw box zoom selection if active
+		gl.Disable(gl.SCISSOR_TEST)
+
+		// Restore viewport to full window for ImGui
+		gl.Viewport(0, 0, WIDTH + 300, HEIGHT)
+
+		// Draw box zoom selection if active using ImGui overlay
 		if state.box_zoom_active {
-			x1 := min(state.box_start_x, state.box_end_x)
-			y1 := min(state.box_start_y, state.box_end_y)
-			x2 := max(state.box_start_x, state.box_end_x)
-			y2 := max(state.box_start_y, state.box_end_y)
+			x1 := f32(min(state.box_start_x, state.box_end_x))
+			y1 := f32(min(state.box_start_y, state.box_end_y))
+			x2 := f32(max(state.box_start_x, state.box_end_x))
+			y2 := f32(max(state.box_start_y, state.box_end_y))
 
-			box_rect := SDL.Rect{x1, y1, x2 - x1, y2 - y1}
-
-			// Draw semi-transparent fill
-			SDL.SetRenderDrawBlendMode(renderer, .BLEND)
-			SDL.SetRenderDrawColor(renderer, 255, 255, 255, 50)
-			SDL.RenderFillRect(renderer, &box_rect)
-
-			// Draw border
-			SDL.SetRenderDrawColor(renderer, 255, 255, 255, 255)
-			SDL.RenderDrawRect(renderer, &box_rect)
+			draw_list := imgui.GetBackgroundDrawList()
+			imgui.DrawList_AddRectFilled(draw_list, {x1, y1}, {x2, y2}, imgui.ColorConvertFloat4ToU32({1, 1, 1, 0.2}))
+			imgui.DrawList_AddRect(draw_list, {x1, y1}, {x2, y2}, imgui.ColorConvertFloat4ToU32({1, 1, 1, 1}), 0, {}, 2)
 		}
 
 		// ImGui Control Panel
@@ -264,9 +288,8 @@ main :: proc() {
 
 		// Render ImGui
 		imgui.Render()
-		imgui_sdlrenderer2.RenderDrawData(imgui.GetDrawData(), renderer)
+		imgui_opengl3.RenderDrawData(imgui.GetDrawData())
 
-		SDL.RenderPresent(renderer)
-		SDL.Delay(16)
+		SDL.GL_SwapWindow(window)
 	}
 }

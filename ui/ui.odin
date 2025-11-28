@@ -2,6 +2,7 @@ package ui
 
 import app "../app"
 import "core:fmt"
+import "core:strings"
 import imgui "vendor:imgui"
 
 Render_control_panel :: proc(state: ^app.App_State, width: int, height: int) {
@@ -10,7 +11,7 @@ Render_control_panel :: proc(state: ^app.App_State, width: int, height: int) {
 	imgui.SetNextWindowPos(imgui.Vec2{f32(width), 0}, .Once)
 	imgui.SetNextWindowSize(imgui.Vec2{280, f32(height) - 20}, .Once)
 
-	flags := imgui.WindowFlags{.NoCollapse}
+	flags := imgui.WindowFlags{.NoCollapse, .NoMove}
 	if imgui.Begin("Controls", nil, flags) {
 		imgui.Text("Mandelbrot Set Explorer")
 		imgui.Separator()
@@ -41,6 +42,32 @@ Render_control_panel :: proc(state: ^app.App_State, width: int, height: int) {
 		}
 		if imgui.IsItemHovered() {
 			imgui.SetTooltip("Toggle SIMD vectorization (AVX 4-wide)")
+		}
+
+		imgui.Separator()
+
+		// Palette selection
+		imgui.Text("Color Palette")
+		palette_names := [?]string {
+			"Classic",
+			"Fire",
+			"Ice",
+			"Ocean",
+			"Sunset",
+			"Grayscale",
+			"Psychedelic",
+		}
+		current_palette := i32(state.palette)
+		str_builder := strings.builder_make()
+		defer strings.builder_destroy(&str_builder)
+		for name in palette_names {
+			strings.write_string(&str_builder, name)
+			strings.write_byte(&str_builder, 0)
+		}
+		palette_options := strings.to_cstring(&str_builder)
+		if imgui.Combo("##palette", &current_palette, palette_options, i32(len(palette_names))) {
+			state.palette = app.Palette_Type(current_palette)
+			state.needs_recompute = true
 		}
 
 		imgui.Separator()

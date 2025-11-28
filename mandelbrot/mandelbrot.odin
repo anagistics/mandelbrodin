@@ -1,6 +1,7 @@
 package mandelbrot
 
 import app "../app"
+import visual "../visual"
 import "core:simd"
 import "core:thread"
 
@@ -91,7 +92,7 @@ compute_scalar_worker :: proc(t: ^thread.Thread) {
 				px[i] = base + i
 				x0[i] = f64(px[i]) / f64(width) * data.scale + data.offset_x
 				iterations := iterate(x0[i], y0, state.max_iterations)
-				color := compute_color(iterations, state.max_iterations)
+				color := compute_color(iterations, state.max_iterations, state.palette)
 				state.pixels[py * width + px[i]] = color
 			}
 		}
@@ -169,7 +170,7 @@ compute_simd_worker :: proc(t: ^thread.Thread) {
 			// Convert to colors and store
 			for i in 0 ..< SIMD_WIDTH {
 				px := base + i
-				color := compute_color(iterations[i], state.max_iterations)
+				color := compute_color(iterations[i], state.max_iterations, state.palette)
 				state.pixels[py * width + px] = color
 			}
 		}
@@ -244,16 +245,55 @@ iterate :: proc(x0: f64, y0: f64, max_iterations: u32) -> u32 {
 	return iteration
 }
 
-compute_color :: proc(iter: u32, max_iterations: u32) -> u32 {
+// Linear interpolation between two values
+lerp :: proc(a: f64, b: f64, t: f64) -> f64 {
+	return a + (b - a) * t
+}
+
+// Interpolate color from gradient
+interpolate_color :: proc(palette: app.Gradient_Palette, t: f64) -> (u8, u8, u8) {
+	if len(palette.stops) == 0 {
+		return 0, 0, 0
+	}
+
+	if t <= palette.stops[0].position {
+		return palette.stops[0].r, palette.stops[0].g, palette.stops[0].b
+	}
+
+	if t >= palette.stops[len(palette.stops) - 1].position {
+		last := palette.stops[len(palette.stops) - 1]
+		return last.r, last.g, last.b
+	}
+
+	// Find the two stops to interpolate between
+	for i in 0 ..< len(palette.stops) - 1 {
+		stop1 := palette.stops[i]
+		stop2 := palette.stops[i + 1]
+
+		if t >= stop1.position && t <= stop2.position {
+			// Calculate interpolation factor
+			local_t := (t - stop1.position) / (stop2.position - stop1.position)
+
+			r := u8(lerp(f64(stop1.r), f64(stop2.r), local_t))
+			g := u8(lerp(f64(stop1.g), f64(stop2.g), local_t))
+			b := u8(lerp(f64(stop1.b), f64(stop2.b), local_t))
+
+			return r, g, b
+		}
+	}
+
+	return 0, 0, 0
+}
+
+compute_color :: proc(iter: u32, max_iterations: u32, palette_type: app.Palette_Type) -> u32 {
 	color: u32
 	if iter == max_iterations {
 		color = 0xFF000000
 	} else {
 		t := f64(iter) / f64(max_iterations)
 
-		r := u8(9 * (1 - t) * t * t * t * 255)
-		g := u8(15 * (1 - t) * (1 - t) * t * t * 255)
-		b := u8(8.5 * (1 - t) * (1 - t) * (1 - t) * t * 255)
+		palette := visual.get_palette(palette_type)
+		r, g, b := interpolate_color(palette, t)
 
 		color = 0xFF000000 | (u32(r) << 16) | (u32(g) << 8) | u32(b)
 	}

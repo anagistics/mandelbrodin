@@ -26,6 +26,7 @@ main :: proc() {
 		needs_recompute     = true,
 		computation_time_ms = 0.0,
 		use_simd            = true, // Use SIMD by default
+		palette             = .Classic, // Default palette
 	}
 	defer delete(state.pixels)
 

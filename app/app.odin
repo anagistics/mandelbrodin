@@ -1,5 +1,29 @@
 package app
 
+// Palette types
+Palette_Type :: enum {
+	Classic,
+	Fire,
+	Ice,
+	Ocean,
+	Sunset,
+	Grayscale,
+	Psychedelic,
+}
+
+// Color stop for gradient
+Color_Stop :: struct {
+	position: f64, // 0.0 to 1.0
+	r:        u8,
+	g:        u8,
+	b:        u8,
+}
+
+// Gradient palette definition
+Gradient_Palette :: struct {
+	stops: []Color_Stop,
+}
+
 // Convert screen coordinates to world coordinates
 screen_to_world :: proc(state: ^App_State, screen_x, screen_y: i32, width, height: int) -> (f64, f64) {
 	scale := 3.5 / state.zoom
@@ -21,6 +45,7 @@ App_State :: struct {
 	max_iterations:      u32,
 	needs_recompute:     bool,
 	use_simd:            bool, // Toggle for SIMD vs scalar computation
+	palette:             Palette_Type, // Current color palette
 	// Mouse interaction state
 	mouse_dragging:      bool,
 	drag_start_x:        f64,

@@ -137,21 +137,22 @@ Render_control_panel :: proc(state: ^app.App_State, width: int, height: int) {
 		// History counter (1-based)
 		imgui.SameLine(0, -1)
 		history_count := len(state.history)
-		if history_count > 0 {
-			current_pos := state.history_index + 1  // Convert to 1-based
+		has_history := history_count > 0
+		if has_history {
+			current_pos := state.history_index + 1 // Convert to 1-based
 			counter_text := fmt.ctprintf("%d/%d", current_pos, history_count)
 			imgui.Text(counter_text)
+			// Clear history button
+			if imgui.Button("Clear") {
+				app.clear_history(state)
+			}
+			if imgui.IsItemHovered() {
+				imgui.SetTooltip("Clear all navigation history")
+			}
 		} else {
 			imgui.Text("0/0")
 		}
 
-		// Clear history button
-		if imgui.Button("Clear History") {
-			app.clear_history(state)
-		}
-		if imgui.IsItemHovered() {
-			imgui.SetTooltip("Clear all navigation history")
-		}
 
 		imgui.Separator()
 

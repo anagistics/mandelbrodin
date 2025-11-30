@@ -17,6 +17,9 @@ import ui "ui"
 WIDTH :: 800
 HEIGHT :: 600
 MAX_ITER :: 256
+CONTROL_PANEL_WIDTH :: 300
+BOOKMARKS_PANEL_WIDTH :: 300
+WINDOW_WIDTH :: WIDTH + CONTROL_PANEL_WIDTH + BOOKMARKS_PANEL_WIDTH
 
 main :: proc() {
 	state := app.App_State {
@@ -31,9 +34,12 @@ main :: proc() {
 		use_gpu             = false, // Use CPU by default
 		palette             = .Classic, // Default palette
 		history_index       = -1, // No history yet
+		bookmarks_dir       = "bookmarks",
+		selected_bookmark   = -1,
 	}
 	defer delete(state.pixels)
 	defer delete(state.history)
+	defer delete(state.bookmarks)
 
 	if SDL.Init(SDL.INIT_VIDEO) != 0 {
 		fmt.eprintln("SDL_Init Error:", SDL.GetError())
@@ -50,7 +56,7 @@ main :: proc() {
 		"Mandelbrot Set - GPU/CPU Toggle",
 		SDL.WINDOWPOS_CENTERED,
 		SDL.WINDOWPOS_CENTERED,
-		WIDTH + 300,
+		WINDOW_WIDTH,
 		HEIGHT,
 		{.OPENGL, .SHOWN},
 	)
@@ -99,6 +105,9 @@ main :: proc() {
 
 	// Save initial state to history
 	app.history_save(&state)
+
+	// Load bookmarks
+	app.load_bookmarks(&state)
 
 	running := true
 	for running {
@@ -295,7 +304,7 @@ main :: proc() {
 		gl.Disable(gl.SCISSOR_TEST)
 
 		// Restore viewport to full window for ImGui
-		gl.Viewport(0, 0, WIDTH + 300, HEIGHT)
+		gl.Viewport(0, 0, WINDOW_WIDTH, HEIGHT)
 
 		// Draw box zoom selection if active using ImGui overlay
 		if state.box_zoom_active {
@@ -309,8 +318,9 @@ main :: proc() {
 			imgui.DrawList_AddRect(draw_list, {x1, y1}, {x2, y2}, imgui.ColorConvertFloat4ToU32({1, 1, 1, 1}), 0, {}, 2)
 		}
 
-		// ImGui Control Panel
+		// ImGui Control Panel and Bookmarks
 		ui.Render_control_panel(&state, WIDTH, HEIGHT)
+		ui.Render_bookmarks_panel(&state, WIDTH, CONTROL_PANEL_WIDTH, HEIGHT)
 
 		// Render ImGui
 		imgui.Render()

@@ -5,8 +5,8 @@ import "core:mem"
 import "core:time"
 import gl "vendor:OpenGL"
 import imgui "vendor:imgui"
-import imgui_sdl2 "vendor:imgui/imgui_impl_sdl2"
 import imgui_opengl3 "vendor:imgui/imgui_impl_opengl3"
+import imgui_sdl2 "vendor:imgui/imgui_impl_sdl2"
 import SDL "vendor:sdl2"
 
 import app "app"
@@ -131,7 +131,8 @@ main :: proc() {
 					if state.editing_bookmark == -1 {
 						// Check if shift is held for forward navigation
 						keyboard_state := SDL.GetKeyboardState(nil)
-						if keyboard_state[SDL.Scancode.LSHIFT] == 1 || keyboard_state[SDL.Scancode.RSHIFT] == 1 {
+						if keyboard_state[SDL.Scancode.LSHIFT] == 1 ||
+						   keyboard_state[SDL.Scancode.RSHIFT] == 1 {
 							// Shift+Backspace: Forward
 							app.history_forward(&state)
 						} else {
@@ -149,14 +150,17 @@ main :: proc() {
 
 					// Only zoom if mouse is over the Mandelbrot area
 					if mouse_x >= 0 && mouse_x < WIDTH && mouse_y >= 0 && mouse_y < HEIGHT {
-						// Track scrolling state
-						if !state.scrolling_active {
-							state.scrolling_active = true
-						}
-						state.last_scroll_time = time.now()
+						// Save current state before changing
+						app.history_save(&state)
 
 						// Get world coordinates before zoom
-						world_x, world_y := app.screen_to_world(&state, mouse_x, mouse_y, WIDTH, HEIGHT)
+						world_x, world_y := app.screen_to_world(
+							&state,
+							mouse_x,
+							mouse_y,
+							WIDTH,
+							HEIGHT,
+						)
 
 						// Zoom in or out
 						zoom_factor := 1.2
@@ -167,7 +171,13 @@ main :: proc() {
 						}
 
 						// Adjust center to keep mouse position fixed in world coordinates
-						new_world_x, new_world_y := app.screen_to_world(&state, mouse_x, mouse_y, WIDTH, HEIGHT)
+						new_world_x, new_world_y := app.screen_to_world(
+							&state,
+							mouse_x,
+							mouse_y,
+							WIDTH,
+							HEIGHT,
+						)
 						state.center_x += world_x - new_world_x
 						state.center_y += world_y - new_world_y
 
@@ -185,7 +195,8 @@ main :: proc() {
 						if event.button.button == SDL.BUTTON_LEFT {
 							// Check if shift is held for box zoom
 							keyboard_state := SDL.GetKeyboardState(nil)
-							if keyboard_state[SDL.Scancode.LSHIFT] == 1 || keyboard_state[SDL.Scancode.RSHIFT] == 1 {
+							if keyboard_state[SDL.Scancode.LSHIFT] == 1 ||
+							   keyboard_state[SDL.Scancode.RSHIFT] == 1 {
 								// Start box zoom
 								state.box_zoom_active = true
 								state.box_start_x = mouse_x
@@ -195,7 +206,13 @@ main :: proc() {
 							} else {
 								// Simple click to recenter
 								app.history_save(&state)
-								world_x, world_y := app.screen_to_world(&state, mouse_x, mouse_y, WIDTH, HEIGHT)
+								world_x, world_y := app.screen_to_world(
+									&state,
+									mouse_x,
+									mouse_y,
+									WIDTH,
+									HEIGHT,
+								)
 								state.center_x = world_x
 								state.center_y = world_y
 								state.needs_recompute = true
@@ -276,16 +293,6 @@ main :: proc() {
 			}
 		}
 
-		// Check if scrolling has ended and save to history
-		SCROLL_TIMEOUT :: 500 // milliseconds
-		if state.scrolling_active {
-			elapsed := time.diff(state.last_scroll_time, time.now())
-			if time.duration_milliseconds(elapsed) > SCROLL_TIMEOUT {
-				app.history_save(&state)
-				state.scrolling_active = false
-			}
-		}
-
 		// Recompute if needed (CPU mode only)
 		if state.needs_recompute && !state.use_gpu {
 			start_time := time.now()
@@ -334,8 +341,21 @@ main :: proc() {
 			y2 := f32(max(state.box_start_y, state.box_end_y))
 
 			draw_list := imgui.GetBackgroundDrawList()
-			imgui.DrawList_AddRectFilled(draw_list, {x1, y1}, {x2, y2}, imgui.ColorConvertFloat4ToU32({1, 1, 1, 0.2}))
-			imgui.DrawList_AddRect(draw_list, {x1, y1}, {x2, y2}, imgui.ColorConvertFloat4ToU32({1, 1, 1, 1}), 0, {}, 2)
+			imgui.DrawList_AddRectFilled(
+				draw_list,
+				{x1, y1},
+				{x2, y2},
+				imgui.ColorConvertFloat4ToU32({1, 1, 1, 0.2}),
+			)
+			imgui.DrawList_AddRect(
+				draw_list,
+				{x1, y1},
+				{x2, y2},
+				imgui.ColorConvertFloat4ToU32({1, 1, 1, 1}),
+				0,
+				{},
+				2,
+			)
 		}
 
 		// ImGui Control Panel and Bookmarks

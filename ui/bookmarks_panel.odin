@@ -2,6 +2,7 @@ package ui
 
 import app "../app"
 import "core:fmt"
+import "core:strings"
 import imgui "vendor:imgui"
 
 Render_bookmarks_panel :: proc(state: ^app.App_State, mandelbrot_width: int, control_width: int, height: int) {
@@ -11,46 +12,8 @@ Render_bookmarks_panel :: proc(state: ^app.App_State, mandelbrot_width: int, con
 
 	flags := imgui.WindowFlags{.NoCollapse, .NoMove, .NoResize}
 	if imgui.Begin("Bookmarks", nil, flags) {
-		// Preset locations
-		imgui.Text("Interesting Locations")
-		imgui.Separator()
-
-		if imgui.Button("Default View", imgui.Vec2{-1, 0}) {
-			app.history_save(state)
-			state.center_x = -0.5
-			state.center_y = 0.0
-			state.zoom = 1.0
-			state.needs_recompute = true
-		}
-
-		if imgui.Button("Seahorse Valley", imgui.Vec2{-1, 0}) {
-			app.history_save(state)
-			state.center_x = -0.743643887037151
-			state.center_y = 0.131825904205330
-			state.zoom = 50.0
-			state.needs_recompute = true
-		}
-
-		if imgui.Button("Elephant Valley", imgui.Vec2{-1, 0}) {
-			app.history_save(state)
-			state.center_x = 0.3245046418497685
-			state.center_y = 0.04855101129280834
-			state.zoom = 100.0
-			state.needs_recompute = true
-		}
-
-		if imgui.Button("Spiral", imgui.Vec2{-1, 0}) {
-			app.history_save(state)
-			state.center_x = -0.7269
-			state.center_y = 0.1889
-			state.zoom = 30.0
-			state.needs_recompute = true
-		}
-
-		imgui.Separator()
-
 		// Saved views
-		imgui.Text("Saved Views")
+		imgui.Text("Bookmarks")
 		imgui.Separator()
 
 		// Save current view button
@@ -71,23 +34,69 @@ Render_bookmarks_panel :: proc(state: ^app.App_State, mandelbrot_width: int, con
 
 		// Display bookmarks
 		for bookmark, i in state.bookmarks {
-			// Selectable item
 			is_selected := state.selected_bookmark == i
+			is_editing := state.editing_bookmark == i
 			display_name := bookmark.view.name if len(bookmark.view.name) > 0 else bookmark.filename
 
-			if imgui.Selectable(fmt.ctprintf("%s##%d", display_name, i), is_selected) {
-				state.selected_bookmark = i
-				app.apply_view(state, bookmark.view)
-				app.history_save(state)
-			}
+			if is_editing {
+				// Show input field for editing
+				imgui.SetKeyboardFocusHere()
 
-			// Right-click context menu
-			if imgui.BeginPopupContextItem(fmt.ctprintf("bookmark_ctx_%d", i)) {
-				if imgui.MenuItem("Delete") {
-					app.delete_bookmark(state, i)
-					state.selected_bookmark = -1
+				flags := imgui.InputTextFlags{.EnterReturnsTrue}
+				if imgui.InputText(fmt.ctprintf("##edit_%d", i), cstring(raw_data(state.edit_buffer[:])), len(state.edit_buffer), flags) {
+					// Enter pressed - save the new name
+					new_name := strings.clone_from_cstring(cstring(raw_data(state.edit_buffer[:])))
+					app.update_bookmark_name(state, i, new_name)
+					delete(new_name)
+					state.editing_bookmark = -1
 				}
-				imgui.EndPopup()
+
+				// Check if Escape was pressed to cancel
+				if imgui.IsKeyPressed(.Escape) {
+					state.editing_bookmark = -1
+				}
+
+				// Cancel editing if clicked outside
+				if !imgui.IsItemActive() && state.editing_bookmark == i {
+					// Wait one frame before canceling to allow Enter to work
+					if imgui.IsMouseClicked(.Left) {
+						state.editing_bookmark = -1
+					}
+				}
+			} else {
+				// Normal selectable item
+				if imgui.Selectable(fmt.ctprintf("%s##%d", display_name, i), is_selected) {
+					state.selected_bookmark = i
+					app.apply_view(state, bookmark.view)
+					app.history_save(state)
+				}
+
+				// Detect double-click to enter edit mode
+				if imgui.IsItemHovered() && imgui.IsMouseDoubleClicked(.Left) {
+					state.editing_bookmark = i
+					// Copy current name to edit buffer
+					name_bytes := transmute([]u8)display_name
+					copy_len := min(len(name_bytes), len(state.edit_buffer) - 1)
+					copy(state.edit_buffer[:], name_bytes[:copy_len])
+					state.edit_buffer[copy_len] = 0 // Null terminate
+				}
+
+				// Right-click context menu
+				if imgui.BeginPopupContextItem(fmt.ctprintf("bookmark_ctx_%d", i)) {
+					if imgui.MenuItem("Rename") {
+						state.editing_bookmark = i
+						// Copy current name to edit buffer
+						name_bytes := transmute([]u8)display_name
+						copy_len := min(len(name_bytes), len(state.edit_buffer) - 1)
+						copy(state.edit_buffer[:], name_bytes[:copy_len])
+						state.edit_buffer[copy_len] = 0 // Null terminate
+					}
+					if imgui.MenuItem("Delete") {
+						app.delete_bookmark(state, i)
+						state.selected_bookmark = -1
+					}
+					imgui.EndPopup()
+				}
 			}
 		}
 

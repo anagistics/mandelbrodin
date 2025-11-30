@@ -36,6 +36,7 @@ main :: proc() {
 		history_index       = -1, // No history yet
 		bookmarks_dir       = "bookmarks",
 		selected_bookmark   = -1,
+		editing_bookmark    = -1,
 	}
 	defer delete(state.pixels)
 	defer delete(state.history)

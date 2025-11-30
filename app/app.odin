@@ -317,6 +317,30 @@ delete_bookmark :: proc(state: ^App_State, index: int) {
 	load_bookmarks(state) // Reload bookmarks
 }
 
+// Update a bookmark's name
+update_bookmark_name :: proc(state: ^App_State, index: int, new_name: string) {
+	if index < 0 || index >= len(state.bookmarks) {
+		return
+	}
+
+	bookmark := &state.bookmarks[index]
+	filepath := fmt.tprintf("%s/%s", state.bookmarks_dir, bookmark.filename)
+
+	// Load the existing view
+	view, ok := load_view(filepath)
+	if !ok {
+		return
+	}
+
+	// Update the name
+	view.name = new_name
+
+	// Save back to the same file
+	if save_view(state, filepath, new_name) {
+		load_bookmarks(state) // Reload bookmarks to refresh the display
+	}
+}
+
 App_State :: struct {
 	pixels:              []u32,
 	computation_time_ms: f64,
@@ -346,4 +370,6 @@ App_State :: struct {
 	bookmarks:           [dynamic]Bookmark,
 	bookmarks_dir:       string,
 	selected_bookmark:   int, // Index of selected bookmark (-1 means none)
+	editing_bookmark:    int, // Index of bookmark being edited (-1 means none)
+	edit_buffer:         [256]u8, // Buffer for editing bookmark names
 }

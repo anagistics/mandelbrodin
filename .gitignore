@@ -1,2 +1,11 @@
-bookmarks/
+# Ignore all files in bookmarks directory
+bookmarks/*
+
+# Except preset bookmark files
+!bookmarks/default_view.json
+!bookmarks/seahorse_valley.json
+!bookmarks/elephant_valley.json
+!bookmarks/spiral.json
+
+# Ignore default save/load file
 saved_view.json

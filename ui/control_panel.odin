@@ -144,6 +144,14 @@ Render_control_panel :: proc(state: ^app.App_State, width: int, height: int) {
 			imgui.Text("0/0")
 		}
 
+		// Clear history button
+		if imgui.Button("Clear History") {
+			app.clear_history(state)
+		}
+		if imgui.IsItemHovered() {
+			imgui.SetTooltip("Clear all navigation history")
+		}
+
 		imgui.Separator()
 
 		// Zoom controls

@@ -153,6 +153,12 @@ can_go_forward :: proc(state: ^App_State) -> bool {
 	return state.history_index >= 0 && state.history_index < len(state.history) - 1
 }
 
+// Clear history
+clear_history :: proc(state: ^App_State) {
+	clear(&state.history)
+	state.history_index = -1
+}
+
 // Convert palette type to string
 palette_to_string :: proc(palette: Palette_Type) -> string {
 	switch palette {

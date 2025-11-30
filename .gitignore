@@ -9,3 +9,6 @@ bookmarks/*
 
 # Ignore default save/load file
 saved_view.json
+
+# Ignore executable
+mandelbrodin

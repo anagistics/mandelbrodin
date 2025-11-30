@@ -124,14 +124,17 @@ main :: proc() {
 				if event.key.keysym.sym == .ESCAPE {
 					running = false
 				} else if event.key.keysym.sym == .BACKSPACE {
-					// Check if shift is held for forward navigation
-					keyboard_state := SDL.GetKeyboardState(nil)
-					if keyboard_state[SDL.Scancode.LSHIFT] == 1 || keyboard_state[SDL.Scancode.RSHIFT] == 1 {
-						// Shift+Backspace: Forward
-						app.history_forward(&state)
-					} else {
-						// Backspace: Back
-						app.history_back(&state)
+					// Only handle history navigation if not editing a bookmark
+					if state.editing_bookmark == -1 {
+						// Check if shift is held for forward navigation
+						keyboard_state := SDL.GetKeyboardState(nil)
+						if keyboard_state[SDL.Scancode.LSHIFT] == 1 || keyboard_state[SDL.Scancode.RSHIFT] == 1 {
+							// Shift+Backspace: Forward
+							app.history_forward(&state)
+						} else {
+							// Backspace: Back
+							app.history_back(&state)
+						}
 					}
 				}
 

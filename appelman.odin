@@ -122,7 +122,10 @@ main :: proc() {
 				running = false
 			case .KEYDOWN:
 				if event.key.keysym.sym == .ESCAPE {
-					running = false
+					// Only quit if not editing a bookmark
+					if state.editing_bookmark == -1 {
+						running = false
+					}
 				} else if event.key.keysym.sym == .BACKSPACE {
 					// Only handle history navigation if not editing a bookmark
 					if state.editing_bookmark == -1 {

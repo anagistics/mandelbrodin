@@ -1,11 +1,59 @@
 package visual
 
-import app "../app"
+// Palette types
+Palette_Type :: enum {
+	Classic,
+	Fire,
+	Ice,
+	Ocean,
+	Sunset,
+	Grayscale,
+	Psychedelic,
+}
+
+// Color stop for gradient
+Color_Stop :: struct {
+	position: f64, // 0.0 to 1.0
+	r:        u8,
+	g:        u8,
+	b:        u8,
+}
+
+// Gradient palette definition
+Gradient_Palette :: struct {
+	stops: []Color_Stop,
+}
+
+// Convert palette type to string
+palette_to_string :: proc(palette: Palette_Type) -> string {
+	switch palette {
+	case .Classic:     return "Classic"
+	case .Fire:        return "Fire"
+	case .Ice:         return "Ice"
+	case .Ocean:       return "Ocean"
+	case .Sunset:      return "Sunset"
+	case .Grayscale:   return "Grayscale"
+	case .Psychedelic: return "Psychedelic"
+	}
+	return "Classic"
+}
+
+// Convert string to palette type
+string_to_palette :: proc(s: string) -> Palette_Type {
+	switch s {
+	case "Classic":     return .Classic
+	case "Fire":        return .Fire
+	case "Ice":         return .Ice
+	case "Ocean":       return .Ocean
+	case "Sunset":      return .Sunset
+	case "Grayscale":   return .Grayscale
+	case "Psychedelic": return .Psychedelic
+	}
+	return .Classic
+}
 
 // Predefined gradient palettes
-get_palette :: proc(palette_type: app.Palette_Type) -> app.Gradient_Palette {
-	using app
-
+get_palette :: proc(palette_type: Palette_Type) -> Gradient_Palette {
 	classic_stops := []Color_Stop{
 		{0.0, 0, 0, 0},
 		{0.16, 32, 107, 203},

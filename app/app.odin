@@ -4,39 +4,7 @@ import "core:encoding/json"
 import "core:fmt"
 import "core:os"
 import "core:time"
-
-// Palette types
-Palette_Type :: enum {
-	Classic,
-	Fire,
-	Ice,
-	Ocean,
-	Sunset,
-	Grayscale,
-	Psychedelic,
-}
-
-// Color stop for gradient
-Color_Stop :: struct {
-	position: f64, // 0.0 to 1.0
-	r:        u8,
-	g:        u8,
-	b:        u8,
-}
-
-// Gradient palette definition
-Gradient_Palette :: struct {
-	stops: []Color_Stop,
-}
-
-// History entry for navigation
-History_Entry :: struct {
-	center_x:       f64,
-	center_y:       f64,
-	zoom:           f64,
-	max_iterations: u32,
-	palette:        Palette_Type,
-}
+import visual "../visual"
 
 // View state for saving/loading
 View_State :: struct {
@@ -67,126 +35,6 @@ screen_to_world :: proc(state: ^App_State, screen_x, screen_y: i32, width, heigh
 	return world_x, world_y
 }
 
-// Save current state to history
-history_save :: proc(state: ^App_State) {
-	// Don't save if we're navigating through history
-	if state.navigating_history {
-		return
-	}
-
-	// If we're not at the end of history, remove everything after current position
-	if state.history_index >= 0 && state.history_index < len(state.history) - 1 {
-		resize(&state.history, state.history_index + 1)
-	}
-
-	// Create new history entry
-	entry := History_Entry {
-		center_x       = state.center_x,
-		center_y       = state.center_y,
-		zoom           = state.zoom,
-		max_iterations = state.max_iterations,
-		palette        = state.palette,
-	}
-
-	// Add to history
-	append(&state.history, entry)
-	state.history_index = len(state.history) - 1
-
-	// Limit history size to 100 entries
-	MAX_HISTORY :: 100
-	if len(state.history) > MAX_HISTORY {
-		// Remove oldest entry
-		ordered_remove(&state.history, 0)
-		state.history_index -= 1
-	}
-}
-
-// Navigate back in history
-history_back :: proc(state: ^App_State) -> bool {
-	if state.history_index <= 0 {
-		return false
-	}
-
-	state.history_index -= 1
-	entry := state.history[state.history_index]
-
-	state.navigating_history = true
-	state.center_x = entry.center_x
-	state.center_y = entry.center_y
-	state.zoom = entry.zoom
-	state.max_iterations = entry.max_iterations
-	state.palette = entry.palette
-	state.needs_recompute = true
-	state.navigating_history = false
-
-	return true
-}
-
-// Navigate forward in history
-history_forward :: proc(state: ^App_State) -> bool {
-	if state.history_index < 0 || state.history_index >= len(state.history) - 1 {
-		return false
-	}
-
-	state.history_index += 1
-	entry := state.history[state.history_index]
-
-	state.navigating_history = true
-	state.center_x = entry.center_x
-	state.center_y = entry.center_y
-	state.zoom = entry.zoom
-	state.max_iterations = entry.max_iterations
-	state.palette = entry.palette
-	state.needs_recompute = true
-	state.navigating_history = false
-
-	return true
-}
-
-// Check if we can go back
-can_go_back :: proc(state: ^App_State) -> bool {
-	return state.history_index > 0
-}
-
-// Check if we can go forward
-can_go_forward :: proc(state: ^App_State) -> bool {
-	return state.history_index >= 0 && state.history_index < len(state.history) - 1
-}
-
-// Clear history
-clear_history :: proc(state: ^App_State) {
-	clear(&state.history)
-	state.history_index = -1
-}
-
-// Convert palette type to string
-palette_to_string :: proc(palette: Palette_Type) -> string {
-	switch palette {
-	case .Classic:     return "Classic"
-	case .Fire:        return "Fire"
-	case .Ice:         return "Ice"
-	case .Ocean:       return "Ocean"
-	case .Sunset:      return "Sunset"
-	case .Grayscale:   return "Grayscale"
-	case .Psychedelic: return "Psychedelic"
-	}
-	return "Classic"
-}
-
-// Convert string to palette type
-string_to_palette :: proc(s: string) -> Palette_Type {
-	switch s {
-	case "Classic":     return .Classic
-	case "Fire":        return .Fire
-	case "Ice":         return .Ice
-	case "Ocean":       return .Ocean
-	case "Sunset":      return .Sunset
-	case "Grayscale":   return .Grayscale
-	case "Psychedelic": return .Psychedelic
-	}
-	return .Classic
-}
-
 // Save current view to JSON file
 save_view :: proc(state: ^App_State, filepath: string, name: string = "") -> bool {
 	view := View_State {
@@ -194,7 +42,7 @@ save_view :: proc(state: ^App_State, filepath: string, name: string = "") -> boo
 		center_y       = state.center_y,
 		zoom           = state.zoom,
 		max_iterations = state.max_iterations,
-		palette        = palette_to_string(state.palette),
+		palette        = visual.palette_to_string(state.palette),
 		name           = name,
 		created_at     = fmt.tprintf("%v", time.now()),
 	}
@@ -240,7 +88,7 @@ apply_view :: proc(state: ^App_State, view: View_State) {
 	state.center_y = view.center_y
 	state.zoom = view.zoom
 	state.max_iterations = view.max_iterations
-	state.palette = string_to_palette(view.palette)
+	state.palette = visual.string_to_palette(view.palette)
 	state.needs_recompute = true
 }
 
@@ -357,7 +205,7 @@ App_State :: struct {
 	needs_recompute:     bool,
 	use_simd:            bool, // Toggle for SIMD vs scalar computation
 	use_gpu:             bool, // Toggle for GPU vs CPU rendering
-	palette:             Palette_Type, // Current color palette
+	palette:             visual.Palette_Type, // Current color palette
 	// Mouse interaction state
 	mouse_dragging:      bool,
 	drag_start_x:        f64,

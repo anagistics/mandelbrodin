@@ -1,6 +1,7 @@
 package ui
 
 import app "../app"
+import visual "../visual"
 import "core:fmt"
 import "core:strings"
 import imgui "vendor:imgui"
@@ -78,7 +79,7 @@ Render_control_panel :: proc(state: ^app.App_State, width: int, height: int) {
 		}
 		palette_options := strings.to_cstring(&str_builder)
 		if imgui.Combo("##palette", &current_palette, palette_options, i32(len(palette_names))) {
-			state.palette = app.Palette_Type(current_palette)
+			state.palette = visual.Palette_Type(current_palette)
 			state.needs_recompute = true
 		}
 

@@ -251,7 +251,7 @@ lerp :: proc(a: f64, b: f64, t: f64) -> f64 {
 }
 
 // Interpolate color from gradient
-interpolate_color :: proc(palette: app.Gradient_Palette, t: f64) -> (u8, u8, u8) {
+interpolate_color :: proc(palette: visual.Gradient_Palette, t: f64) -> (u8, u8, u8) {
 	if len(palette.stops) == 0 {
 		return 0, 0, 0
 	}
@@ -285,7 +285,7 @@ interpolate_color :: proc(palette: app.Gradient_Palette, t: f64) -> (u8, u8, u8)
 	return 0, 0, 0
 }
 
-compute_color :: proc(iter: u32, max_iterations: u32, palette_type: app.Palette_Type) -> u32 {
+compute_color :: proc(iter: u32, max_iterations: u32, palette_type: visual.Palette_Type) -> u32 {
 	color: u32
 	if iter == max_iterations {
 		color = 0xFF000000

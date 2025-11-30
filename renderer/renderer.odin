@@ -158,7 +158,8 @@ Init :: proc(r: ^Renderer, width: int, height: int) -> bool {
 	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
 	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
 	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-	gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, i32(width), i32(height), 0, gl.RGBA, gl.UNSIGNED_BYTE, nil)
+	// Use BGRA to match CPU color packing (0xAARRGGBB in little-endian = [BB,GG,RR,AA] bytes)
+	gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, i32(width), i32(height), 0, gl.BGRA, gl.UNSIGNED_BYTE, nil)
 
 	return true
 }
@@ -201,9 +202,9 @@ Render_GPU :: proc(r: ^Renderer, state: ^app.App_State, width: int, height: int)
 
 // Render using CPU-computed texture
 Render_CPU :: proc(r: ^Renderer, pixels: []u32, width: int, height: int) {
-	// Upload texture
+	// Upload texture (use BGRA to match CPU color packing)
 	gl.BindTexture(gl.TEXTURE_2D, r.cpu_texture)
-	gl.TexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, i32(width), i32(height), gl.RGBA, gl.UNSIGNED_BYTE, raw_data(pixels))
+	gl.TexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, i32(width), i32(height), gl.BGRA, gl.UNSIGNED_BYTE, raw_data(pixels))
 
 	// Render texture
 	gl.UseProgram(r.texture_program)

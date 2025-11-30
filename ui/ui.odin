@@ -84,6 +84,48 @@ Render_control_panel :: proc(state: ^app.App_State, width: int, height: int) {
 
 		imgui.Separator()
 
+		// History navigation
+		imgui.Text("Navigation History")
+
+		// Back button
+		can_back := app.can_go_back(state)
+		if !can_back {
+			imgui.BeginDisabled()
+		}
+		if imgui.Button("< Back") {
+			app.history_back(state)
+		}
+		if !can_back {
+			imgui.EndDisabled()
+		}
+
+		imgui.SameLine(0, -1)
+
+		// Forward button
+		can_forward := app.can_go_forward(state)
+		if !can_forward {
+			imgui.BeginDisabled()
+		}
+		if imgui.Button("Forward >") {
+			app.history_forward(state)
+		}
+		if !can_forward {
+			imgui.EndDisabled()
+		}
+
+		// History counter (1-based)
+		imgui.SameLine(0, -1)
+		history_count := len(state.history)
+		if history_count > 0 {
+			current_pos := state.history_index + 1  // Convert to 1-based
+			counter_text := fmt.ctprintf("%d/%d", current_pos, history_count)
+			imgui.Text(counter_text)
+		} else {
+			imgui.Text("0/0")
+		}
+
+		imgui.Separator()
+
 		// Zoom controls
 		imgui.Text("View Controls")
 		zoom_f32 := f32(state.zoom)
@@ -93,11 +135,13 @@ Render_control_panel :: proc(state: ^app.App_State, width: int, height: int) {
 		}
 
 		if imgui.Button("Zoom In") {
+			app.history_save(state)
 			state.zoom *= 2.0
 			state.needs_recompute = true
 		}
 		imgui.SameLine(0, -1)
 		if imgui.Button("Zoom Out") {
+			app.history_save(state)
 			state.zoom *= 0.5
 			state.needs_recompute = true
 		}
@@ -117,6 +161,7 @@ Render_control_panel :: proc(state: ^app.App_State, width: int, height: int) {
 		}
 
 		if imgui.Button("Reset View") {
+			app.history_save(state)
 			state.zoom = 1.0
 			state.center_x = -0.5
 			state.center_y = 0.0
@@ -143,6 +188,7 @@ Render_control_panel :: proc(state: ^app.App_State, width: int, height: int) {
 		imgui.Text("Interesting Locations")
 
 		if imgui.Button("Default View") {
+			app.history_save(state)
 			state.center_x = -0.5
 			state.center_y = 0.0
 			state.zoom = 1.0
@@ -150,6 +196,7 @@ Render_control_panel :: proc(state: ^app.App_State, width: int, height: int) {
 		}
 
 		if imgui.Button("Seahorse Valley") {
+			app.history_save(state)
 			state.center_x = -0.743643887037151
 			state.center_y = 0.131825904205330
 			state.zoom = 50.0
@@ -157,6 +204,7 @@ Render_control_panel :: proc(state: ^app.App_State, width: int, height: int) {
 		}
 
 		if imgui.Button("Elephant Valley") {
+			app.history_save(state)
 			state.center_x = 0.3245046418497685
 			state.center_y = 0.04855101129280834
 			state.zoom = 100.0
@@ -164,6 +212,7 @@ Render_control_panel :: proc(state: ^app.App_State, width: int, height: int) {
 		}
 
 		if imgui.Button("Spiral") {
+			app.history_save(state)
 			state.center_x = -0.7269
 			state.center_y = 0.1889
 			state.zoom = 30.0
@@ -183,6 +232,12 @@ Render_control_panel :: proc(state: ^app.App_State, width: int, height: int) {
 		imgui.BulletText("Right Drag: Pan view")
 		imgui.BulletText("Mouse Wheel: Zoom")
 		imgui.BulletText("Shift+Drag: Box zoom")
+
+		// Keyboard controls info
+		imgui.Separator()
+		imgui.Text("Keyboard Controls")
+		imgui.BulletText("Backspace: History back")
+		imgui.BulletText("Shift+Backspace: History forward")
 
 		// Info
 		imgui.Separator()

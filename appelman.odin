@@ -30,8 +30,10 @@ main :: proc() {
 		use_simd            = true, // Use SIMD by default
 		use_gpu             = false, // Use CPU by default
 		palette             = .Classic, // Default palette
+		history_index       = -1, // No history yet
 	}
 	defer delete(state.pixels)
+	defer delete(state.history)
 
 	if SDL.Init(SDL.INIT_VIDEO) != 0 {
 		fmt.eprintln("SDL_Init Error:", SDL.GetError())
@@ -95,6 +97,9 @@ main :: proc() {
 	}
 	defer renderer.Destroy(&render_context)
 
+	// Save initial state to history
+	app.history_save(&state)
+
 	running := true
 	for running {
 		event: SDL.Event
@@ -108,6 +113,16 @@ main :: proc() {
 			case .KEYDOWN:
 				if event.key.keysym.sym == .ESCAPE {
 					running = false
+				} else if event.key.keysym.sym == .BACKSPACE {
+					// Check if shift is held for forward navigation
+					keyboard_state := SDL.GetKeyboardState(nil)
+					if keyboard_state[SDL.Scancode.LSHIFT] == 1 || keyboard_state[SDL.Scancode.RSHIFT] == 1 {
+						// Shift+Backspace: Forward
+						app.history_forward(&state)
+					} else {
+						// Backspace: Back
+						app.history_back(&state)
+					}
 				}
 
 			case .MOUSEWHEEL:
@@ -118,6 +133,9 @@ main :: proc() {
 
 					// Only zoom if mouse is over the Mandelbrot area
 					if mouse_x >= 0 && mouse_x < WIDTH && mouse_y >= 0 && mouse_y < HEIGHT {
+						// Save current state before changing
+						app.history_save(&state)
+
 						// Get world coordinates before zoom
 						world_x, world_y := app.screen_to_world(&state, mouse_x, mouse_y, WIDTH, HEIGHT)
 
@@ -157,6 +175,7 @@ main :: proc() {
 								state.box_end_y = mouse_y
 							} else {
 								// Simple click to recenter
+								app.history_save(&state)
 								world_x, world_y := app.screen_to_world(&state, mouse_x, mouse_y, WIDTH, HEIGHT)
 								state.center_x = world_x
 								state.center_y = world_y
@@ -185,6 +204,9 @@ main :: proc() {
 
 					// Only zoom if box is large enough
 					if abs(x2 - x1) > 10 && abs(y2 - y1) > 10 {
+						// Save current state before changing
+						app.history_save(&state)
+
 						// Get world coordinates of box corners
 						world_x1, world_y1 := app.screen_to_world(&state, x1, y1, WIDTH, HEIGHT)
 						world_x2, world_y2 := app.screen_to_world(&state, x2, y2, WIDTH, HEIGHT)
@@ -203,6 +225,10 @@ main :: proc() {
 						state.needs_recompute = true
 					}
 				} else if event.button.button == SDL.BUTTON_RIGHT {
+					// Save history when pan is complete
+					if state.mouse_dragging {
+						app.history_save(&state)
+					}
 					state.mouse_dragging = false
 				}
 

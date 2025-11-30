@@ -216,6 +216,8 @@ App_State :: struct {
 	box_start_y:         i32,
 	box_end_x:           i32,
 	box_end_y:           i32,
+	scrolling_active:    bool, // Flag to track if mouse wheel scrolling is in progress
+	last_scroll_time:    time.Time, // Timestamp of last scroll event
 	// History navigation
 	history:             [dynamic]History_Entry,
 	history_index:       int, // Current position in history (-1 means no history)

@@ -149,8 +149,11 @@ main :: proc() {
 
 					// Only zoom if mouse is over the Mandelbrot area
 					if mouse_x >= 0 && mouse_x < WIDTH && mouse_y >= 0 && mouse_y < HEIGHT {
-						// Save current state before changing
-						app.history_save(&state)
+						// Track scrolling state
+						if !state.scrolling_active {
+							state.scrolling_active = true
+						}
+						state.last_scroll_time = time.now()
 
 						// Get world coordinates before zoom
 						world_x, world_y := app.screen_to_world(&state, mouse_x, mouse_y, WIDTH, HEIGHT)
@@ -270,6 +273,16 @@ main :: proc() {
 					state.box_end_x = event.motion.x
 					state.box_end_y = event.motion.y
 				}
+			}
+		}
+
+		// Check if scrolling has ended and save to history
+		SCROLL_TIMEOUT :: 500 // milliseconds
+		if state.scrolling_active {
+			elapsed := time.diff(state.last_scroll_time, time.now())
+			if time.duration_milliseconds(elapsed) > SCROLL_TIMEOUT {
+				app.history_save(&state)
+				state.scrolling_active = false
 			}
 		}
 

@@ -18,12 +18,9 @@ import visual "visual"
 WIDTH :: 800
 HEIGHT :: 600
 MAX_ITER :: 256
-CONTROL_PANEL_WIDTH :: 300
-BOOKMARKS_PANEL_WIDTH :: 300
-EXPORT_PANEL_WIDTH :: 300
-EXPORT_PANEL_HEIGHT :: 400
-WINDOW_WIDTH :: WIDTH + CONTROL_PANEL_WIDTH + BOOKMARKS_PANEL_WIDTH
-WINDOW_HEIGHT :: HEIGHT + EXPORT_PANEL_HEIGHT
+PANEL_WIDTH :: 300
+WINDOW_WIDTH :: WIDTH + PANEL_WIDTH
+WINDOW_HEIGHT :: HEIGHT
 
 main :: proc() {
 	state := app.App_State {
@@ -65,11 +62,11 @@ main :: proc() {
 	SDL.GL_SetAttribute(.CONTEXT_PROFILE_MASK, i32(SDL.GLprofile.CORE))
 
 	window := SDL.CreateWindow(
-		"Mandelbrot Set - GPU/CPU Toggle",
+		"Mandelbrot Set Explorer",
 		SDL.WINDOWPOS_CENTERED,
 		SDL.WINDOWPOS_CENTERED,
 		WINDOW_WIDTH,
-		WINDOW_HEIGHT,
+		HEIGHT,
 		{.OPENGL, .SHOWN},
 	)
 	if window == nil {
@@ -138,14 +135,12 @@ main :: proc() {
 			case .QUIT:
 				running = false
 			case .KEYDOWN:
-				if event.key.keysym.sym == .ESCAPE {
-					// Only quit if not editing a bookmark
-					if state.editing_bookmark == -1 {
+				// Only handle keyboard shortcuts if ImGui doesn't want keyboard input
+				// (i.e., user is not typing in a text field)
+				if !io.WantCaptureKeyboard {
+					if event.key.keysym.sym == .ESCAPE {
 						running = false
-					}
-				} else if event.key.keysym.sym == .BACKSPACE {
-					// Only handle history navigation if not editing a bookmark
-					if state.editing_bookmark == -1 {
+					} else if event.key.keysym.sym == .BACKSPACE {
 						// Check if shift is held for forward navigation
 						keyboard_state := SDL.GetKeyboardState(nil)
 						if keyboard_state[SDL.Scancode.LSHIFT] == 1 ||
@@ -348,7 +343,7 @@ main :: proc() {
 		gl.Disable(gl.SCISSOR_TEST)
 
 		// Restore viewport to full window for ImGui
-		gl.Viewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT)
+		gl.Viewport(0, 0, WINDOW_WIDTH, HEIGHT)
 
 		// Draw box zoom selection if active using ImGui overlay
 		if state.box_zoom_active {
@@ -375,10 +370,8 @@ main :: proc() {
 			)
 		}
 
-		// ImGui Control Panel, Bookmarks, and Export
-		ui.Render_control_panel(&state, WIDTH, HEIGHT)
-		ui.Render_bookmarks_panel(&state, WIDTH, CONTROL_PANEL_WIDTH, HEIGHT)
-		ui.Render_export_panel(&state, WIDTH + CONTROL_PANEL_WIDTH, HEIGHT, EXPORT_PANEL_WIDTH, EXPORT_PANEL_HEIGHT)
+		// ImGui Tabbed Panel
+		ui.Render_tabbed_panel(&state, WIDTH, PANEL_WIDTH, HEIGHT)
 
 		// Render ImGui
 		imgui.Render()

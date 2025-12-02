@@ -150,7 +150,255 @@ Each thread independently iterates through its assigned rows, computing all pixe
 - Optimal for resolutions where `height >= NUM_THREADS` (e.g., 600px height = 75 rows/thread)
 - Static partitioning means no dynamic overhead, but can cause load imbalance if some rows are significantly more complex than others
 
-### 3. SIMD Vectorization (AVX 4-wide)
+### 4. External Palette System
+
+Implemented in `visual/palette.odin`, `app/app.odin`, palette files in `palettes/`
+
+**Architecture**
+- Palettes stored as JSON files in `palettes/` directory
+- Runtime loading and validation of palette data
+- Case-sensitive palette names
+- Hot-reload capability (can add palettes without rebuilding)
+- Single default fallback palette (Classic)
+
+**Palette File Format** (`palettes/*.json`)
+```json
+{
+  "name": "Classic",
+  "description": "Traditional Mandelbrot color scheme",
+  "stops": [
+    {"position": 0.0, "r": 0, "g": 0, "b": 0},
+    {"position": 0.16, "r": 32, "g": 107, "b": 203},
+    {"position": 1.0, "r": 0, "g": 0, "b": 0}
+  ]
+}
+```
+
+**Validation** (`visual/palette.odin:validate_palette()`)
+- Minimum 2 color stops required
+- Positions must be in ascending order
+- Positions must be in range [0.0, 1.0]
+- RGB values must be in range [0, 255]
+- Invalid palettes are rejected with specific error messages
+
+**Loading Pipeline**
+1. `load_palettes()` scans `palettes/` directory for `.json` files
+2. Each file is parsed and validated
+3. Valid palettes stored in `state.palettes` array
+4. Palette dropdown populated dynamically from loaded palettes
+5. Default "Classic" palette used as fallback
+
+**Color Interpolation**
+- Linear interpolation between color stops
+- Same gradient calculation for both GPU and CPU modes
+- Smooth color transitions across iteration counts
+- Palette data passed to GPU shader as uniform arrays
+
+**Integration**
+- Control panel shows loaded palettes in dropdown (`ui/control_panel.odin`)
+- Palette changes tracked in navigation history
+- Bookmarks store palette name with view
+- Both GPU and CPU rendering use identical palette logic
+
+### 5. High-Resolution Image Export
+
+Implemented in `renderer/export.odin`, `ui/export_panel.odin`, `app/app.odin`
+
+**Export Resolutions**
+Predefined resolution presets in `app.EXPORT_RESOLUTIONS`:
+- Full HD: 1920×1080 (2.1 MP)
+- 2K: 2560×1440 (3.7 MP)
+- 4K: 3840×2160 (8.3 MP)
+- 5K: 5120×2880 (14.7 MP)
+- 8K: 7680×4320 (33.2 MP)
+- 16K: 15360×8640 (132.7 MP)
+
+**Export Pipeline** (`renderer/export.odin:export_image()`)
+1. Allocate temporary pixel buffer for target resolution
+2. Create export state copy with export dimensions
+3. Compute Mandelbrot at full resolution using CPU path
+4. Encode to PNG format using stb_image_write
+5. Save to user-specified filename
+6. Display computation time in console
+
+**PNG Encoding** (`app/app.odin:save_png()`)
+- Uses `stb_image_write` library
+- Lossless compression
+- RGBA color format (32-bit per pixel)
+- Automatic `.png` extension if not provided
+- File saved to current working directory
+
+**UI Features** (`ui/export_panel.odin`)
+- Resolution dropdown with megapixel display
+- Filename text input with preview
+- Current view settings display (zoom, center, iterations, palette)
+- Export button with validation (disabled during export)
+- Progress indication (synchronous for now)
+
+**Performance Characteristics**
+- Uses CPU rendering path (more flexible than GPU for arbitrary sizes)
+- Computation time scales with resolution (4K ~4x slower than HD)
+- 16K exports can take several seconds depending on iteration count
+- Memory usage: resolution × 4 bytes (e.g., 4K = 33 MB, 16K = 530 MB)
+
+**Design Decisions**
+- CPU path ensures export works regardless of GPU memory limits
+- Synchronous operation (no threading yet) for simplicity
+- PNG format chosen for lossless quality and wide compatibility
+- No GPU path due to framebuffer size limitations
+
+### 6. Tabbed Panel UI
+
+Implemented in `ui/tabbed_panel.odin`, refactored panel files
+
+**Layout Architecture**
+- Single tabbed panel on right side of window (300px width)
+- Three tabs: Controls, Bookmarks, Export
+- Mandelbrot visualization on left (800×600px)
+- Total window size: 1100×600px
+
+**Tab Organization**
+1. **Controls Tab** - Parameters and rendering settings
+   - Zoom, center position, iteration count
+   - GPU/CPU toggle, SIMD toggle
+   - Palette selection
+   - Computation time display
+   - History navigation buttons
+
+2. **Bookmarks Tab** - Saved view management
+   - Save current view button
+   - Bookmarks list with selection
+   - Rename/delete context menu
+   - Preview of selected bookmark details
+
+3. **Export Tab** - High-resolution image export
+   - Resolution preset dropdown
+   - Filename input field
+   - Current settings preview
+   - Export button with validation
+
+**Implementation Pattern**
+Each panel split into two functions:
+- `Render_*_content(state, width, height)` - Tab content only
+- `Render_*(state, ...)` - Standalone window wrapper (for future use)
+
+**Code Structure** (`ui/tabbed_panel.odin:Render_tabbed_panel()`)
+```odin
+if imgui.BeginTabBar("MainTabs", {}) {
+    if imgui.BeginTabItem("Controls", nil, {}) {
+        Render_control_panel_content(state, width, height)
+        imgui.EndTabItem()
+    }
+    // Similar for Bookmarks and Export tabs
+    imgui.EndTabBar()
+}
+```
+
+**Benefits**
+- Reduced window width (1100px vs 2000px previous design)
+- Better organization of related functionality
+- More screen space for Mandelbrot visualization
+- Standard UI pattern familiar to users
+
+### 7. Navigation History System
+
+Implemented in `app/history.odin`, keyboard shortcuts in `appelman.odin`
+
+**Architecture**
+- Browser-style back/forward navigation through view changes
+- History entries track: zoom, center, iterations, palette
+- Maximum 100 entries with automatic cleanup
+- Index-based navigation with forward history preservation
+
+**History Entry Structure** (`app/history.odin`)
+```odin
+History_Entry :: struct {
+    zoom:           f64,
+    center_x:       f64,
+    center_y:       f64,
+    max_iterations: int,
+    palette:        string,
+}
+```
+
+**Operations**
+- `history_save()` - Save current state (called before view changes)
+- `history_back()` - Navigate to previous entry (Backspace key)
+- `history_forward()` - Navigate to next entry (Shift+Backspace)
+- `apply_view()` - Restore view from history entry
+
+**Trigger Points** (when history is saved)
+- Mouse wheel zoom
+- Click to recenter
+- Box zoom completion
+- Right-drag pan completion
+- Palette change
+- Bookmark loading
+- Manual navigation via UI buttons
+
+**Keyboard Shortcuts** (`appelman.odin:143-154`)
+- **Backspace** - Go back in history
+- **Shift+Backspace** - Go forward in history
+- Only active when not editing text (`!io.WantCaptureKeyboard`)
+
+**Implementation Details**
+- History stored as dynamic array in `App_State`
+- Current position tracked by `history_index`
+- Forward history cleared when new change made from middle of stack
+- Initial view saved on startup
+- Prevents duplicate consecutive entries
+
+### 8. Bookmark System
+
+Implemented in `app/app.odin:save_bookmark()`, UI in `ui/bookmarks_panel.odin`
+
+**Architecture**
+- Bookmarks saved as JSON files in `bookmarks/` directory
+- Each bookmark stores complete view state
+- User-editable names with rename/delete support
+- Preset interesting locations included with distribution
+
+**Bookmark File Format** (`bookmarks/*.json`)
+```json
+{
+  "name": "Seahorse Valley",
+  "zoom": 150.5,
+  "center_x": -0.743643,
+  "center_y": 0.131825,
+  "max_iterations": 512,
+  "palette": "Classic"
+}
+```
+
+**Operations**
+- **Save** - Store current view with auto-generated name
+- **Load** - Apply bookmark view and add to history
+- **Rename** - Double-click or context menu to edit name
+- **Delete** - Context menu to remove bookmark
+- **Preview** - Display bookmark details before loading
+
+**UI Features** (`ui/bookmarks_panel.odin`)
+- "Save Current View" button at top
+- Scrollable bookmarks list with selection
+- Double-click to rename (inline editing)
+- Right-click context menu (Rename/Delete)
+- Preview panel showing zoom, center, iterations, palette
+- Visual feedback for selected bookmark
+
+**Preset Bookmarks** (included in distribution)
+- `default_view.json` - Initial view
+- `seahorse_valley.json` - Classic Mandelbrot feature
+- `elephant_valley.json` - Detailed structure
+- `spiral.json` - Interesting spiral pattern
+
+**Integration**
+- Loaded on startup with `load_bookmarks()`
+- Saves to disk immediately when created/modified
+- Palette names stored as strings (case-sensitive)
+- Loading bookmark triggers history save
+- Compatible with external editing (JSON format)
+
+### 9. SIMD Vectorization (AVX 4-wide)
 
 Implemented in `mandelbrot/mandelbrot.odin:98-185`
 
@@ -189,7 +437,7 @@ Implemented in `mandelbrot/mandelbrot.odin:98-185`
 - Clamping `min(1, max(0, diff))` creates binary 0/1 state
 - Multiplying by `(1 - escaped)` zeros out escaped lanes
 
-### 4. Dual Implementation Architecture
+### 10. Dual Implementation Architecture
 
 **SIMD Path** (`compute_simd`, lines 101-132, `compute_simd_worker`, lines 134-174)
 - Default implementation using 4-wide AVX vectorization + 8 threads
@@ -261,16 +509,40 @@ Toggle rendering modes in the UI to compare performance:
 ```
 /~/mandelbrodin/
 ├── appelman.odin                  # Main application, OpenGL/SDL setup, event handling
-├── app/app.odin                  # App state, coordinate conversion helpers
-├── mandelbrot/mandelbrot.odin    # CPU compute: SIMD and scalar implementations
-├── renderer/renderer.odin        # OpenGL renderer: shader loading, GPU/CPU rendering
-├── visual/palette.odin           # Color palette definitions and gradients
-├── ui/ui.odin                    # ImGui control panel, GPU/CPU toggles
-└── shaders/
-    ├── mandelbrot.vert           # Vertex shader for fullscreen quad
-    ├── mandelbrot.frag           # Fragment shader: GPU Mandelbrot computation
-    ├── texture.vert              # Vertex shader for CPU texture display
-    └── texture.frag              # Fragment shader: CPU texture sampling
+├── app/
+│   ├── app.odin                  # App state, bookmarks, palettes, coordinate helpers
+│   └── history.odin              # Navigation history (back/forward)
+├── mandelbrot/
+│   └── mandelbrot.odin           # CPU compute: SIMD and scalar implementations
+├── renderer/
+│   ├── renderer.odin             # OpenGL renderer: shader loading, GPU/CPU rendering
+│   └── export.odin               # High-resolution image export to PNG
+├── visual/
+│   └── palette.odin              # Palette loading, validation, color gradients
+├── ui/
+│   ├── ui.odin                   # Package documentation
+│   ├── tabbed_panel.odin         # Main tabbed panel wrapper
+│   ├── control_panel.odin        # Controls tab content
+│   ├── bookmarks_panel.odin      # Bookmarks tab content
+│   └── export_panel.odin         # Export tab content
+├── shaders/
+│   ├── mandelbrot.vert           # Vertex shader for fullscreen quad
+│   ├── mandelbrot.frag           # Fragment shader: GPU Mandelbrot computation
+│   ├── texture.vert              # Vertex shader for CPU texture display
+│   └── texture.frag              # Fragment shader: CPU texture sampling
+├── palettes/                      # External palette definitions (JSON)
+│   ├── Classic.json
+│   ├── Fire.json
+│   ├── Ice.json
+│   ├── Ocean.json
+│   ├── Sunset.json
+│   ├── Grayscale.json
+│   └── Psychedelic.json
+└── bookmarks/                     # Saved view locations (JSON)
+    ├── default_view.json
+    ├── seahorse_valley.json
+    ├── elephant_valley.json
+    └── spiral.json
 ```
 
 ## Technical Details
@@ -299,10 +571,49 @@ world_y := f64(screen_y) / f64(height) * (2.0 / state.zoom) + offset_y
 ```
 
 ### Build Instructions
+
+**Prerequisites**
+- Odin compiler (nightly build recommended)
+- OpenGL 3.3+ support
+- SDL2 development libraries
+- stb_image libraries (compile with make)
+
+**Compile stb_image libraries** (one-time setup)
 ```bash
-odin build . -debug -out:odin
-./odin
+make -C ~/odin-linux-amd64-nightly+2025-10-05/vendor/stb/src
 ```
+
+**Build and run**
+```bash
+odin build . -out:mandelbrodin
+./mandelbrodin
+```
+
+**Debug build**
+```bash
+odin build . -debug -out:mandelbrodin
+./mandelbrodin
+```
+
+## UI/UX Features
+
+### Keyboard Shortcuts
+- **Backspace** - Navigate back in history
+- **Shift+Backspace** - Navigate forward in history
+- **ESC** - Quit application (disabled when editing text)
+
+### Input Protection
+- Uses `io.WantCaptureKeyboard` to detect text input
+- Keyboard shortcuts disabled when typing in text fields
+- Prevents accidental navigation/quit while editing
+- Applies to: export filename, bookmark names, all text inputs
+
+### Mouse Controls
+- **Left Click** - Recenter view
+- **Right Drag** - Pan view
+- **Mouse Wheel** - Zoom in/out
+- **Shift+Drag** - Box zoom selection
+- Only active over Mandelbrot area (not UI panels)
 
 ## Future Optimization Opportunities
 
@@ -316,25 +627,48 @@ odin build . -debug -out:odin
    - 3-6x speedup over multithreaded SIMD CPU
    - Runtime toggle between GPU and CPU modes
 
-3. **Dynamic load balancing**: Use work-stealing queue instead of static row distribution (CPU mode)
+3. ~~**External palette system**: Load palettes from files for customization~~ ✓ **IMPLEMENTED**
+   - JSON-based palette definitions in `palettes/` directory
+   - Validation and hot-reload support
+   - Users can add custom palettes without code changes
+
+4. ~~**High-resolution export**: Render images larger than screen size~~ ✓ **IMPLEMENTED**
+   - Export up to 16K resolution (132.7 megapixels)
+   - PNG format with lossless compression
+   - Uses CPU path for flexibility
+   - Dedicated UI in Export tab
+
+5. ~~**Bookmarks system**: Save and load favorite locations~~ ✓ **IMPLEMENTED**
+   - JSON-based bookmark files in `bookmarks/` directory
+   - Save/load/rename/delete operations
+   - Preview details before loading
+   - Preset interesting locations included
+
+6. ~~**Navigation history**: Back/forward through view changes~~ ✓ **IMPLEMENTED**
+   - Browser-like history navigation
+   - Keyboard shortcuts (Backspace/Shift+Backspace)
+   - Tracks zoom, pan, and palette changes
+   - Maximum 100 entries with auto-cleanup
+
+7. **Dynamic load balancing**: Use work-stealing queue instead of static row distribution (CPU mode)
    - Reduces thread idle time when rows have varying complexity
    - Potential 10-20% additional speedup in high-contrast regions
 
-4. **AVX-512**: Use 8-wide vectors on newer CPUs (2x over AVX2)
+8. **AVX-512**: Use 8-wide vectors on newer CPUs (2x over AVX2)
    - Double SIMD throughput: 8 pixels per vector instead of 4
    - Requires AVX-512 capable CPU (Intel Skylake-X or newer)
 
-5. **Smooth coloring**: Continuous iteration count for better gradients
+9. **Smooth coloring**: Continuous iteration count for better gradients
    - Use escape distance estimation for smooth color interpolation
    - Eliminates color banding artifacts
    - Applicable to both GPU and CPU modes
 
-6. **Perturbation theory**: Enable extreme zoom levels (> 1e15)
+10. **Perturbation theory**: Enable extreme zoom levels (> 1e15)
    - Use arbitrary precision + series approximation
    - Required for deep zoom beyond f64/f32 precision limits
    - More complex to implement in GPU shaders
 
-7. **Compute shaders**: Upgrade from fragment shaders to compute shaders
+11. **Compute shaders**: Upgrade from fragment shaders to compute shaders
    - Better control over parallelism and memory access patterns
    - Shared memory for optimization
    - Vulkan/WebGPU for cross-platform support

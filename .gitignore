@@ -10,5 +10,17 @@ bookmarks/*
 # Ignore default save/load file
 saved_view.json
 
+# Ignore all files in palettes directory
+palettes/*
+
+# Except preset palette files
+!palettes/Classic.json
+!palettes/Fire.json
+!palettes/Ice.json
+!palettes/Ocean.json
+!palettes/Sunset.json
+!palettes/Grayscale.json
+!palettes/Psychedelic.json
+
 # Ignore executable
 mandelbrodin

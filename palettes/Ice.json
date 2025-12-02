@@ -1,0 +1,11 @@
+{
+  "name": "Ice",
+  "description": "Cold colors from deep blue to white, evoking frozen landscapes",
+  "stops": [
+    {"position": 0.0, "r": 0, "g": 0, "b": 32},
+    {"position": 0.3, "r": 0, "g": 32, "b": 128},
+    {"position": 0.6, "r": 0, "g": 128, "b": 255},
+    {"position": 0.85, "r": 128, "g": 200, "b": 255},
+    {"position": 1.0, "r": 255, "g": 255, "b": 255}
+  ]
+}

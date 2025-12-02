@@ -61,26 +61,32 @@ Render_control_panel :: proc(state: ^app.App_State, width: int, height: int) {
 
 		// Palette selection
 		imgui.Text("Color Palette")
-		palette_names := [?]string {
-			"Classic",
-			"Fire",
-			"Ice",
-			"Ocean",
-			"Sunset",
-			"Grayscale",
-			"Psychedelic",
-		}
-		current_palette := i32(state.palette)
-		str_builder := strings.builder_make()
-		defer strings.builder_destroy(&str_builder)
-		for name in palette_names {
-			strings.write_string(&str_builder, name)
-			strings.write_byte(&str_builder, 0)
-		}
-		palette_options := strings.to_cstring(&str_builder)
-		if imgui.Combo("##palette", &current_palette, palette_options, i32(len(palette_names))) {
-			state.palette = visual.Palette_Type(current_palette)
-			state.needs_recompute = true
+		if len(state.palettes) > 0 {
+			// Find current palette index
+			current_palette: i32 = 0
+			for palette, i in state.palettes {
+				if palette.name == state.palette {
+					current_palette = i32(i)
+					break
+				}
+			}
+
+			// Build palette options string
+			str_builder := strings.builder_make()
+			defer strings.builder_destroy(&str_builder)
+			for palette in state.palettes {
+				strings.write_string(&str_builder, palette.name)
+				strings.write_byte(&str_builder, 0)
+			}
+			palette_options := strings.to_cstring(&str_builder)
+
+			// Render combo box
+			if imgui.Combo("##palette", &current_palette, palette_options, i32(len(state.palettes))) {
+				selected_palette := state.palettes[current_palette]
+				app.set_palette(state, selected_palette.name)
+			}
+		} else {
+			imgui.TextDisabled("No palettes loaded")
 		}
 
 		imgui.Separator()

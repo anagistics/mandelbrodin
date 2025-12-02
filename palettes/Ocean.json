@@ -1,0 +1,11 @@
+{
+  "name": "Ocean",
+  "description": "Deep sea colors transitioning from dark blue to aqua",
+  "stops": [
+    {"position": 0.0, "r": 0, "g": 0, "b": 64},
+    {"position": 0.25, "r": 0, "g": 64, "b": 128},
+    {"position": 0.5, "r": 0, "g": 128, "b": 192},
+    {"position": 0.75, "r": 64, "g": 192, "b": 192},
+    {"position": 1.0, "r": 192, "g": 255, "b": 255}
+  ]
+}

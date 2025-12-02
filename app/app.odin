@@ -42,7 +42,7 @@ save_view :: proc(state: ^App_State, filepath: string, name: string = "") -> boo
 		center_y       = state.center_y,
 		zoom           = state.zoom,
 		max_iterations = state.max_iterations,
-		palette        = visual.palette_to_string(state.palette),
+		palette        = state.palette,
 		name           = name,
 		created_at     = fmt.tprintf("%v", time.now()),
 	}
@@ -88,8 +88,7 @@ apply_view :: proc(state: ^App_State, view: View_State) {
 	state.center_y = view.center_y
 	state.zoom = view.zoom
 	state.max_iterations = view.max_iterations
-	state.palette = visual.string_to_palette(view.palette)
-	state.needs_recompute = true
+	set_palette(state, view.palette)
 }
 
 // Load all bookmarks from directory
@@ -195,6 +194,33 @@ update_bookmark_name :: proc(state: ^App_State, index: int, new_name: string) {
 	}
 }
 
+// Load all palettes from directory
+load_palettes_from_dir :: proc(state: ^App_State) {
+	state.palettes = visual.load_palettes(state.palettes_dir)
+
+	if len(state.palettes) == 0 {
+		fmt.eprintln("Warning: No palettes loaded, using default palette")
+		state.palette = "Classic"
+		state.current_palette = visual.DEFAULT_PALETTE
+	}
+}
+
+// Set the current palette by name
+set_palette :: proc(state: ^App_State, palette_name: string) {
+	// Try to find the palette
+	palette, found := visual.find_palette(state.palettes[:], palette_name)
+	if found {
+		state.palette = palette_name
+		state.current_palette = palette
+		state.needs_recompute = true
+	} else {
+		fmt.eprintln("Warning: Palette not found:", palette_name, "- using default")
+		state.palette = "Classic"
+		state.current_palette = visual.DEFAULT_PALETTE
+		state.needs_recompute = true
+	}
+}
+
 App_State :: struct {
 	pixels:              []u32,
 	computation_time_ms: f64,
@@ -205,7 +231,8 @@ App_State :: struct {
 	needs_recompute:     bool,
 	use_simd:            bool, // Toggle for SIMD vs scalar computation
 	use_gpu:             bool, // Toggle for GPU vs CPU rendering
-	palette:             visual.Palette_Type, // Current color palette
+	palette:             string, // Current color palette name
+	current_palette:     visual.Gradient_Palette, // Current palette gradient data
 	// Mouse interaction state
 	mouse_dragging:      bool,
 	drag_start_x:        f64,
@@ -228,4 +255,7 @@ App_State :: struct {
 	selected_bookmark:   int, // Index of selected bookmark (-1 means none)
 	editing_bookmark:    int, // Index of bookmark being edited (-1 means none)
 	edit_buffer:         [256]u8, // Buffer for editing bookmark names
+	// Palettes
+	palettes:            [dynamic]visual.Loaded_Palette,
+	palettes_dir:        string
 }

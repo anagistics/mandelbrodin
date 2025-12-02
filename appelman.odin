@@ -13,6 +13,7 @@ import app "app"
 import mb "mandelbrot"
 import renderer "renderer"
 import ui "ui"
+import visual "visual"
 
 WIDTH :: 800
 HEIGHT :: 600
@@ -32,15 +33,18 @@ main :: proc() {
 		computation_time_ms = 0.0,
 		use_simd            = true, // Use SIMD by default
 		use_gpu             = false, // Use CPU by default
-		palette             = .Classic, // Default palette
+		palette             = "Classic", // Default palette name
+		current_palette     = visual.DEFAULT_PALETTE, // Default palette data
 		history_index       = -1, // No history yet
 		bookmarks_dir       = "bookmarks",
+		palettes_dir        = "palettes",
 		selected_bookmark   = -1,
 		editing_bookmark    = -1,
 	}
 	defer delete(state.pixels)
 	defer delete(state.history)
 	defer delete(state.bookmarks)
+	defer delete(state.palettes)
 
 	if SDL.Init(SDL.INIT_VIDEO) != 0 {
 		fmt.eprintln("SDL_Init Error:", SDL.GetError())
@@ -103,6 +107,12 @@ main :: proc() {
 		return
 	}
 	defer renderer.Destroy(&render_context)
+
+	// Load palettes
+	app.load_palettes_from_dir(&state)
+
+	// Set initial palette (will use loaded palette or fall back to default)
+	app.set_palette(&state, "Classic")
 
 	// Save initial state to history
 	app.history_save(&state)

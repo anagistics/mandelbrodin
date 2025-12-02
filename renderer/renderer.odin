@@ -175,7 +175,7 @@ Render_GPU :: proc(r: ^Renderer, state: ^app.App_State, width: int, height: int)
 	gl.Uniform1i(r.u_max_iterations, i32(state.max_iterations))
 
 	// Set palette uniforms
-	palette := visual.get_palette(state.palette)
+	palette := state.current_palette
 	num_stops := i32(len(palette.stops))
 	gl.Uniform1i(r.u_num_stops, num_stops)
 

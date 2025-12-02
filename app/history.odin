@@ -8,7 +8,7 @@ History_Entry :: struct {
 	center_y:       f64,
 	zoom:           f64,
 	max_iterations: u32,
-	palette:        visual.Palette_Type,
+	palette:        string,
 }
 
 // Save current state to history
@@ -59,8 +59,7 @@ history_back :: proc(state: ^App_State) -> bool {
 	state.center_y = entry.center_y
 	state.zoom = entry.zoom
 	state.max_iterations = entry.max_iterations
-	state.palette = entry.palette
-	state.needs_recompute = true
+	set_palette(state, entry.palette)
 	state.navigating_history = false
 
 	return true
@@ -80,8 +79,7 @@ history_forward :: proc(state: ^App_State) -> bool {
 	state.center_y = entry.center_y
 	state.zoom = entry.zoom
 	state.max_iterations = entry.max_iterations
-	state.palette = entry.palette
-	state.needs_recompute = true
+	set_palette(state, entry.palette)
 	state.navigating_history = false
 
 	return true

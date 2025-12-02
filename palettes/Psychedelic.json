@@ -1,0 +1,14 @@
+{
+  "name": "Psychedelic",
+  "description": "Vibrant rainbow colors cycling through the full spectrum",
+  "stops": [
+    {"position": 0.0, "r": 255, "g": 0, "b": 255},
+    {"position": 0.14, "r": 0, "g": 0, "b": 255},
+    {"position": 0.28, "r": 0, "g": 255, "b": 255},
+    {"position": 0.42, "r": 0, "g": 255, "b": 0},
+    {"position": 0.56, "r": 255, "g": 255, "b": 0},
+    {"position": 0.7, "r": 255, "g": 128, "b": 0},
+    {"position": 0.84, "r": 255, "g": 0, "b": 0},
+    {"position": 1.0, "r": 255, "g": 0, "b": 255}
+  ]
+}

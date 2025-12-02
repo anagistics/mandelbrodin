@@ -92,7 +92,7 @@ compute_scalar_worker :: proc(t: ^thread.Thread) {
 				px[i] = base + i
 				x0[i] = f64(px[i]) / f64(width) * data.scale + data.offset_x
 				iterations := iterate(x0[i], y0, state.max_iterations)
-				color := compute_color(iterations, state.max_iterations, state.palette)
+				color := compute_color(iterations, state.max_iterations, state.current_palette)
 				state.pixels[py * width + px[i]] = color
 			}
 		}
@@ -170,7 +170,7 @@ compute_simd_worker :: proc(t: ^thread.Thread) {
 			// Convert to colors and store
 			for i in 0 ..< SIMD_WIDTH {
 				px := base + i
-				color := compute_color(iterations[i], state.max_iterations, state.palette)
+				color := compute_color(iterations[i], state.max_iterations, state.current_palette)
 				state.pixels[py * width + px] = color
 			}
 		}
@@ -285,16 +285,13 @@ interpolate_color :: proc(palette: visual.Gradient_Palette, t: f64) -> (u8, u8, 
 	return 0, 0, 0
 }
 
-compute_color :: proc(iter: u32, max_iterations: u32, palette_type: visual.Palette_Type) -> u32 {
+compute_color :: proc(iter: u32, max_iterations: u32, palette: visual.Gradient_Palette) -> u32 {
 	color: u32
 	if iter == max_iterations {
 		color = 0xFF000000
 	} else {
 		t := f64(iter) / f64(max_iterations)
-
-		palette := visual.get_palette(palette_type)
 		r, g, b := interpolate_color(palette, t)
-
 		color = 0xFF000000 | (u32(r) << 16) | (u32(g) << 8) | u32(b)
 	}
 	return color

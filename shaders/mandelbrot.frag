@@ -64,21 +64,19 @@ void iterate(vec2 c, int max_iter, out int iteration, out float magnitude_sq) {
     magnitude_sq = 0.0;
 
     for (int i = 0; i < max_iter; i++) {
-        magnitude_sq = dot(z, z);
-        if (magnitude_sq > 4.0) {
-            break;
-        }
-
         // z = z^2 + c
         float x_temp = z.x * z.x - z.y * z.y + c.x;
         z.y = 2.0 * z.x * z.y + c.y;
         z.x = x_temp;
 
         iteration++;
-    }
 
-    // Update magnitude_sq one last time
-    magnitude_sq = dot(z, z);
+        // Calculate magnitude squared (after updating z)
+        magnitude_sq = dot(z, z);
+        if (magnitude_sq > 4.0) {
+            break;
+        }
+    }
 }
 
 // Calculate smooth iteration count

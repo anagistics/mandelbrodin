@@ -207,10 +207,18 @@ iterate_simd :: proc(x0_vec: simd.f64x4, y0_vec: simd.f64x4, max_iterations: u32
 	magnitude_sq := simd.f64x4{0, 0, 0, 0}
 
 	for iter: u32 = 0; iter < max_iterations; iter += 1 {
-		// Calculate magnitude squared
+		// Mandelbrot iteration: z = z^2 + c
 		xx := x * x
 		yy := y * y
-		magnitude_sq = xx + yy
+		xtemp := xx - yy + x0_vec
+		y = 2.0 * x * y + y0_vec
+		x = xtemp
+
+		// Increment counter for active lanes
+		iter_count = iter_count + active
+
+		// Calculate magnitude squared (after updating z)
+		magnitude_sq = x * x + y * y
 
 		// Calculate difference: negative if not escaped, positive if escaped
 		diff := magnitude_sq - threshold
@@ -220,21 +228,12 @@ iterate_simd :: proc(x0_vec: simd.f64x4, y0_vec: simd.f64x4, max_iterations: u32
 		escaped := simd.min(one, simd.max(zero, diff))
 
 		// Update active: if escaped, set to 0; otherwise keep 1
-		// active = active * (1 - min(escaped, 1))
 		active = active * (one - escaped)
-
-		// Increment counter for active lanes
-		iter_count = iter_count + active
 
 		// Early exit if all lanes have escaped
 		if simd.reduce_add_bisect(active) == 0.0 {
 			break
 		}
-
-		// Mandelbrot iteration: z = z^2 + c
-		xtemp := xx - yy + x0_vec
-		y = 2.0 * x * y + y0_vec
-		x = xtemp
 	}
 
 	// Convert to arrays

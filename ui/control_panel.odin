@@ -83,6 +83,7 @@ Render_control_panel :: proc(state: ^app.App_State, width: int, height: int) {
 			// Render combo box
 			if imgui.Combo("##palette", &current_palette, palette_options, i32(len(state.palettes))) {
 				selected_palette := state.palettes[current_palette]
+				app.history_save(state)
 				app.set_palette(state, selected_palette.name)
 			}
 		} else {

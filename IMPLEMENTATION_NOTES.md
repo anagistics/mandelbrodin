@@ -510,13 +510,16 @@ Toggle rendering modes in the UI to compare performance:
 /~/mandelbrodin/
 ├── appelman.odin                  # Main application, OpenGL/SDL setup, event handling
 ├── app/
-│   ├── app.odin                  # App state, bookmarks, palettes, coordinate helpers
+│   ├── app.odin                  # Core app state and coordinate helpers
+│   ├── bookmark.odin             # Bookmark management (save/load/delete views)
+│   ├── palette.odin              # Palette management (load/set palettes)
+│   ├── export.odin               # Image export functions (PNG encoding)
 │   └── history.odin              # Navigation history (back/forward)
 ├── mandelbrot/
 │   └── mandelbrot.odin           # CPU compute: SIMD and scalar implementations
 ├── renderer/
 │   ├── renderer.odin             # OpenGL renderer: shader loading, GPU/CPU rendering
-│   └── export.odin               # High-resolution image export to PNG
+│   └── export.odin               # High-resolution image export computation
 ├── visual/
 │   └── palette.odin              # Palette loading, validation, color gradients
 ├── ui/

@@ -7,6 +7,7 @@ uniform vec2 u_resolution;
 uniform float u_zoom;
 uniform vec2 u_center;
 uniform int u_max_iterations;
+uniform bool u_use_smooth_coloring;
 
 // Palette uniforms
 const int MAX_STOPS = 10;
@@ -56,13 +57,15 @@ vec3 interpolate_color(float t) {
     return vec3(0.0);
 }
 
-// Mandelbrot iteration
-int iterate(vec2 c, int max_iter) {
+// Mandelbrot iteration - returns iteration count and final magnitude squared
+void iterate(vec2 c, int max_iter, out int iteration, out float magnitude_sq) {
     vec2 z = vec2(0.0);
-    int iteration = 0;
+    iteration = 0;
+    magnitude_sq = 0.0;
 
     for (int i = 0; i < max_iter; i++) {
-        if (dot(z, z) > 4.0) {
+        magnitude_sq = dot(z, z);
+        if (magnitude_sq > 4.0) {
             break;
         }
 
@@ -74,7 +77,22 @@ int iterate(vec2 c, int max_iter) {
         iteration++;
     }
 
-    return iteration;
+    // Update magnitude_sq one last time
+    magnitude_sq = dot(z, z);
+}
+
+// Calculate smooth iteration count
+float calculate_smooth_iteration(int iter, float magnitude_sq) {
+    // Avoid log of values <= 0
+    if (magnitude_sq <= 1.0) {
+        return float(iter);
+    }
+
+    // Smooth iteration formula: n + 1 - log(log(|z|)) / log(2)
+    float magnitude = sqrt(magnitude_sq);
+    float smooth_val = float(iter) + 1.0 - log(log(magnitude)) / log(2.0);
+
+    return max(0.0, smooth_val);
 }
 
 void main()
@@ -91,13 +109,21 @@ void main()
     vec2 c = vec2(x0, y0);
 
     // Compute iterations
-    int iter = iterate(c, u_max_iterations);
+    int iter;
+    float magnitude_sq;
+    iterate(c, u_max_iterations, iter, magnitude_sq);
 
     // Compute color
     if (iter == u_max_iterations) {
         FragColor = vec4(0.0, 0.0, 0.0, 1.0);
     } else {
-        float t = float(iter) / float(u_max_iterations);
+        float t;
+        if (u_use_smooth_coloring) {
+            float smooth_iter = calculate_smooth_iteration(iter, magnitude_sq);
+            t = smooth_iter / float(u_max_iterations);
+        } else {
+            t = float(iter) / float(u_max_iterations);
+        }
         vec3 color = interpolate_color(t);
         FragColor = vec4(color, 1.0);
     }

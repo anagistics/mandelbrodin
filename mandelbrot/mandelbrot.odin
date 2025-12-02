@@ -2,6 +2,7 @@ package mandelbrot
 
 import app "../app"
 import visual "../visual"
+import "core:math"
 import "core:simd"
 import "core:thread"
 
@@ -91,8 +92,16 @@ compute_scalar_worker :: proc(t: ^thread.Thread) {
 			#unroll for i in 0 ..< N {
 				px[i] = base + i
 				x0[i] = f64(px[i]) / f64(width) * data.scale + data.offset_x
-				iterations := iterate(x0[i], y0, state.max_iterations)
-				color := compute_color(iterations, state.max_iterations, state.current_palette)
+				iterations, magnitude_sq := iterate(x0[i], y0, state.max_iterations)
+
+				color: u32
+				if state.use_smooth_coloring {
+					smooth_iter := calculate_smooth_iteration(iterations, magnitude_sq)
+					color = compute_color_smooth(smooth_iter, state.max_iterations, state.current_palette)
+				} else {
+					color = compute_color(iterations, state.max_iterations, state.current_palette)
+				}
+
 				state.pixels[py * width + px[i]] = color
 			}
 		}
@@ -165,12 +174,18 @@ compute_simd_worker :: proc(t: ^thread.Thread) {
 			x0_vec := (base_vec / width_vec) * scale_vec + offset_vec
 
 			// Compute iterations for 4 pixels simultaneously
-			iterations := iterate_simd(x0_vec, y0_vec, state.max_iterations)
+			iterations, magnitudes := iterate_simd(x0_vec, y0_vec, state.max_iterations)
 
 			// Convert to colors and store
 			for i in 0 ..< SIMD_WIDTH {
 				px := base + i
-				color := compute_color(iterations[i], state.max_iterations, state.current_palette)
+				color: u32
+				if state.use_smooth_coloring {
+					smooth_iter := calculate_smooth_iteration(iterations[i], magnitudes[i])
+					color = compute_color_smooth(smooth_iter, state.max_iterations, state.current_palette)
+				} else {
+					color = compute_color(iterations[i], state.max_iterations, state.current_palette)
+				}
 				state.pixels[py * width + px] = color
 			}
 		}
@@ -178,7 +193,7 @@ compute_simd_worker :: proc(t: ^thread.Thread) {
 }
 
 // SIMD iteration - processes 4 pixels at once
-iterate_simd :: proc(x0_vec: simd.f64x4, y0_vec: simd.f64x4, max_iterations: u32) -> [4]u32 {
+iterate_simd :: proc(x0_vec: simd.f64x4, y0_vec: simd.f64x4, max_iterations: u32) -> ([4]u32, [4]f64) {
 	x := simd.f64x4{0, 0, 0, 0}
 	y := simd.f64x4{0, 0, 0, 0}
 	threshold := simd.f64x4{4.0, 4.0, 4.0, 4.0}
@@ -189,11 +204,13 @@ iterate_simd :: proc(x0_vec: simd.f64x4, y0_vec: simd.f64x4, max_iterations: u32
 	iter_count := simd.f64x4{0, 0, 0, 0}
 	active := simd.f64x4{1, 1, 1, 1} // 1.0 = active, 0.0 = done
 
+	magnitude_sq := simd.f64x4{0, 0, 0, 0}
+
 	for iter: u32 = 0; iter < max_iterations; iter += 1 {
 		// Calculate magnitude squared
 		xx := x * x
 		yy := y * y
-		magnitude_sq := xx + yy
+		magnitude_sq = xx + yy
 
 		// Calculate difference: negative if not escaped, positive if escaped
 		diff := magnitude_sq - threshold
@@ -220,29 +237,41 @@ iterate_simd :: proc(x0_vec: simd.f64x4, y0_vec: simd.f64x4, max_iterations: u32
 		x = xtemp
 	}
 
-	// Convert to u32 array
+	// Convert to arrays
 	iter_f64 := simd.to_array(iter_count)
-	result := [4]u32{
+	mag_sq_f64 := simd.to_array(magnitude_sq)
+
+	iterations := [4]u32{
 		u32(iter_f64[0]),
 		u32(iter_f64[1]),
 		u32(iter_f64[2]),
 		u32(iter_f64[3]),
 	}
-	return result
+
+	magnitudes := [4]f64{
+		mag_sq_f64[0],
+		mag_sq_f64[1],
+		mag_sq_f64[2],
+		mag_sq_f64[3],
+	}
+
+	return iterations, magnitudes
 }
 
 // Scalar fallback iteration (kept for reference/debugging)
-iterate :: proc(x0: f64, y0: f64, max_iterations: u32) -> u32 {
+iterate :: proc(x0: f64, y0: f64, max_iterations: u32) -> (u32, f64) {
 	x := 0.0
 	y := 0.0
 	iteration: u32 = 0
-	for x * x + y * y <= 4.0 && iteration < max_iterations {
+	magnitude_sq := 0.0
+	for magnitude_sq <= 4.0 && iteration < max_iterations {
 		xtemp := x * x - y * y + x0
 		y = 2.0 * x * y + y0
 		x = xtemp
 		iteration += 1
+		magnitude_sq = x * x + y * y
 	}
-	return iteration
+	return iteration, magnitude_sq
 }
 
 // Linear interpolation between two values
@@ -285,12 +314,40 @@ interpolate_color :: proc(palette: visual.Gradient_Palette, t: f64) -> (u8, u8, 
 	return 0, 0, 0
 }
 
+// Calculate smooth iteration count from discrete iteration and final magnitude
+calculate_smooth_iteration :: proc(iter: u32, magnitude_sq: f64) -> f64 {
+	// Avoid log of values <= 0
+	if magnitude_sq <= 1.0 {
+		return f64(iter)
+	}
+
+	// Smooth iteration formula: n + 1 - log(log(|z|)) / log(2)
+	// Where |z| = sqrt(magnitude_sq)
+	magnitude := math.sqrt(magnitude_sq)
+	smooth := f64(iter) + 1.0 - math.ln(math.ln(magnitude)) / math.ln(f64(2.0))
+
+	return max(0.0, smooth)
+}
+
 compute_color :: proc(iter: u32, max_iterations: u32, palette: visual.Gradient_Palette) -> u32 {
 	color: u32
 	if iter == max_iterations {
 		color = 0xFF000000
 	} else {
 		t := f64(iter) / f64(max_iterations)
+		r, g, b := interpolate_color(palette, t)
+		color = 0xFF000000 | (u32(r) << 16) | (u32(g) << 8) | u32(b)
+	}
+	return color
+}
+
+// Compute color with smooth (fractional) iteration count
+compute_color_smooth :: proc(smooth_iter: f64, max_iterations: u32, palette: visual.Gradient_Palette) -> u32 {
+	color: u32
+	if smooth_iter >= f64(max_iterations) {
+		color = 0xFF000000
+	} else {
+		t := smooth_iter / f64(max_iterations)
 		r, g, b := interpolate_color(palette, t)
 		color = 0xFF000000 | (u32(r) << 16) | (u32(g) << 8) | u32(b)
 	}

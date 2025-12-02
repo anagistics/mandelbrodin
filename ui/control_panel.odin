@@ -54,6 +54,14 @@ imgui.Text("Mandelbrot Set Explorer")
 		imgui.TextDisabled("SIMD (CPU only)")
 	}
 
+	// Smooth coloring toggle
+	if imgui.Checkbox("Smooth Coloring", &state.use_smooth_coloring) {
+		state.needs_recompute = true
+	}
+	if imgui.IsItemHovered() {
+		imgui.SetTooltip("Use continuous iteration count for smooth gradients (eliminates color banding)")
+	}
+
 	imgui.Separator()
 
 	// Palette selection

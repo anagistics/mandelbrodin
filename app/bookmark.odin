@@ -7,13 +7,14 @@ import "core:time"
 
 // View state for saving/loading
 View_State :: struct {
-	center_x:       f64         `json:"center_x"`,
-	center_y:       f64         `json:"center_y"`,
-	zoom:           f64         `json:"zoom"`,
-	max_iterations: u32         `json:"max_iterations"`,
-	palette:        string      `json:"palette"`,
-	name:           string      `json:"name,omitempty"`,
-	created_at:     string      `json:"created_at,omitempty"`,
+	center_x:           f64         `json:"center_x"`,
+	center_y:           f64         `json:"center_y"`,
+	zoom:               f64         `json:"zoom"`,
+	max_iterations:     u32         `json:"max_iterations"`,
+	palette:            string      `json:"palette"`,
+	use_smooth_coloring: bool       `json:"use_smooth_coloring"`,
+	name:               string      `json:"name,omitempty"`,
+	created_at:         string      `json:"created_at,omitempty"`,
 }
 
 // Bookmark entry for UI display
@@ -25,13 +26,14 @@ Bookmark :: struct {
 // Save current view to JSON file
 save_view :: proc(state: ^App_State, filepath: string, name: string = "") -> bool {
 	view := View_State {
-		center_x       = state.center_x,
-		center_y       = state.center_y,
-		zoom           = state.zoom,
-		max_iterations = state.max_iterations,
-		palette        = state.palette,
-		name           = name,
-		created_at     = fmt.tprintf("%v", time.now()),
+		center_x           = state.center_x,
+		center_y           = state.center_y,
+		zoom               = state.zoom,
+		max_iterations     = state.max_iterations,
+		palette            = state.palette,
+		use_smooth_coloring = state.use_smooth_coloring,
+		name               = name,
+		created_at         = fmt.tprintf("%v", time.now()),
 	}
 
 	data, err := json.marshal(view, {pretty = true, use_spaces = true, spaces = 2})
@@ -75,6 +77,7 @@ apply_view :: proc(state: ^App_State, view: View_State) {
 	state.center_y = view.center_y
 	state.zoom = view.zoom
 	state.max_iterations = view.max_iterations
+	state.use_smooth_coloring = view.use_smooth_coloring
 	set_palette(state, view.palette)
 }
 

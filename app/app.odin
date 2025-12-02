@@ -35,6 +35,7 @@ App_State :: struct {
 	needs_recompute:     bool,
 	use_simd:            bool, // Toggle for SIMD vs scalar computation
 	use_gpu:             bool, // Toggle for GPU vs CPU rendering
+	use_smooth_coloring: bool, // Toggle for smooth coloring (continuous iteration)
 	palette:             string, // Current color palette name
 	current_palette:     visual.Gradient_Palette, // Current palette gradient data
 	// Mouse interaction state

@@ -1,10 +1,9 @@
 package ui
 
 import app "../app"
-import mb "../mandelbrot"
+import renderer "../renderer"
 import "core:fmt"
 import "core:strings"
-import "core:time"
 import imgui "vendor:imgui"
 
 // Render just the content of the export panel (for use in tabs)
@@ -95,33 +94,10 @@ imgui.Text("Export High Resolution")
 			resolution := app.EXPORT_RESOLUTIONS[state.export_resolution]
 			state.export_in_progress = true
 
-			// Allocate temporary pixel buffer
-			pixels := make([]u32, resolution.width * resolution.height)
-			defer delete(pixels)
-
-			// Create temporary state for export
-			export_state := state^
-			export_state.pixels = pixels
-
-			// Compute Mandelbrot at export resolution
-			fmt.printfln("Computing %dx%d image...", resolution.width, resolution.height)
-			start_time := time.now()
-			mb.Compute(&export_state, resolution.width, resolution.height)
-			end_time := time.now()
-
-			duration := time.diff(start_time, end_time)
-			fmt.printfln("Computation took %.2f ms", time.duration_milliseconds(duration))
-
-			// Save to file
-			success := app.export_image(pixels, resolution.width, resolution.height, output_filename)
+			// Export using renderer module
+			success := renderer.export_image(state, resolution.width, resolution.height, output_filename)
 
 			state.export_in_progress = false
-
-			if success {
-				fmt.println("Export completed successfully!")
-			} else {
-				fmt.eprintln("Export failed!")
-			}
 		}
 	}
 

@@ -54,7 +54,8 @@ imgui.Text("Export High Resolution")
 				break
 			}
 		}
-		state.export_filename = string(input_buffer[:null_pos])
+		// Clone the string to allocate persistent memory (input_buffer is stack-allocated)
+		state.export_filename = strings.clone(string(input_buffer[:null_pos]))
 	}
 
 	// Show preview of full path

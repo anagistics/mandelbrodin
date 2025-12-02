@@ -20,7 +20,10 @@ HEIGHT :: 600
 MAX_ITER :: 256
 CONTROL_PANEL_WIDTH :: 300
 BOOKMARKS_PANEL_WIDTH :: 300
+EXPORT_PANEL_WIDTH :: 300
+EXPORT_PANEL_HEIGHT :: 400
 WINDOW_WIDTH :: WIDTH + CONTROL_PANEL_WIDTH + BOOKMARKS_PANEL_WIDTH
+WINDOW_HEIGHT :: HEIGHT + EXPORT_PANEL_HEIGHT
 
 main :: proc() {
 	state := app.App_State {
@@ -40,6 +43,10 @@ main :: proc() {
 		palettes_dir        = "palettes",
 		selected_bookmark   = -1,
 		editing_bookmark    = -1,
+		export_resolution   = 2, // Default to 4K
+		export_filename     = "mandelbrot_export", // Default export filename
+		export_in_progress  = false,
+		export_progress     = 0.0,
 	}
 	defer delete(state.pixels)
 	defer delete(state.history)
@@ -62,7 +69,7 @@ main :: proc() {
 		SDL.WINDOWPOS_CENTERED,
 		SDL.WINDOWPOS_CENTERED,
 		WINDOW_WIDTH,
-		HEIGHT,
+		WINDOW_HEIGHT,
 		{.OPENGL, .SHOWN},
 	)
 	if window == nil {
@@ -341,7 +348,7 @@ main :: proc() {
 		gl.Disable(gl.SCISSOR_TEST)
 
 		// Restore viewport to full window for ImGui
-		gl.Viewport(0, 0, WINDOW_WIDTH, HEIGHT)
+		gl.Viewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT)
 
 		// Draw box zoom selection if active using ImGui overlay
 		if state.box_zoom_active {
@@ -368,9 +375,10 @@ main :: proc() {
 			)
 		}
 
-		// ImGui Control Panel and Bookmarks
+		// ImGui Control Panel, Bookmarks, and Export
 		ui.Render_control_panel(&state, WIDTH, HEIGHT)
 		ui.Render_bookmarks_panel(&state, WIDTH, CONTROL_PANEL_WIDTH, HEIGHT)
+		ui.Render_export_panel(&state, WIDTH + CONTROL_PANEL_WIDTH, HEIGHT, EXPORT_PANEL_WIDTH, EXPORT_PANEL_HEIGHT)
 
 		// Render ImGui
 		imgui.Render()

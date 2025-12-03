@@ -256,8 +256,7 @@ iterate_simd :: proc(
 
 	// Convert to arrays
 	iterations := simd.to_array(iter_count)
-	mag_sq_f64 := simd.to_array(magnitude_sq)
-	magnitudes := [4]f64{mag_sq_f64[0], mag_sq_f64[1], mag_sq_f64[2], mag_sq_f64[3]}
+	magnitudes := simd.to_array(magnitude_sq)
 
 	return iterations, magnitudes
 }

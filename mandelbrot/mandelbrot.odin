@@ -14,14 +14,14 @@ NUM_THREADS :: 8
 
 // Thread data for passing parameters to worker threads
 Thread_Data :: struct {
-	state:         ^app.App_State,
-	width:         int,
-	height:        int,
-	row_start:     int,
-	row_end:       int,
-	scale:         f64,
-	offset_x:      f64,
-	offset_y:      f64,
+	state:     ^app.App_State,
+	width:     int,
+	height:    int,
+	row_start: int,
+	row_end:   int,
+	scale:     f64,
+	offset_x:  f64,
+	offset_y:  f64,
 }
 
 Compute :: proc(state: ^app.App_State, width: int, height: int) {
@@ -50,7 +50,7 @@ compute_scalar :: proc(state: ^app.App_State, width: int, height: int) {
 
 	// Spawn threads
 	for i in 0 ..< NUM_THREADS {
-		thread_data[i] = Thread_Data{
+		thread_data[i] = Thread_Data {
 			state     = state,
 			width     = width,
 			height    = height,
@@ -97,7 +97,11 @@ compute_scalar_worker :: proc(t: ^thread.Thread) {
 				color: u32
 				if state.use_smooth_coloring {
 					smooth_iter := calculate_smooth_iteration(iterations, magnitude_sq)
-					color = compute_color_smooth(smooth_iter, state.max_iterations, state.current_palette)
+					color = compute_color_smooth(
+						smooth_iter,
+						state.max_iterations,
+						state.current_palette,
+					)
 				} else {
 					color = compute_color(iterations, state.max_iterations, state.current_palette)
 				}
@@ -124,7 +128,7 @@ compute_simd :: proc(state: ^app.App_State, width: int, height: int) {
 
 	// Spawn threads
 	for i in 0 ..< NUM_THREADS {
-		thread_data[i] = Thread_Data{
+		thread_data[i] = Thread_Data {
 			state     = state,
 			width     = width,
 			height    = height,
@@ -182,9 +186,17 @@ compute_simd_worker :: proc(t: ^thread.Thread) {
 				color: u32
 				if state.use_smooth_coloring {
 					smooth_iter := calculate_smooth_iteration(iterations[i], magnitudes[i])
-					color = compute_color_smooth(smooth_iter, state.max_iterations, state.current_palette)
+					color = compute_color_smooth(
+						smooth_iter,
+						state.max_iterations,
+						state.current_palette,
+					)
 				} else {
-					color = compute_color(iterations[i], state.max_iterations, state.current_palette)
+					color = compute_color(
+						iterations[i],
+						state.max_iterations,
+						state.current_palette,
+					)
 				}
 				state.pixels[py * width + px] = color
 			}
@@ -193,20 +205,28 @@ compute_simd_worker :: proc(t: ^thread.Thread) {
 }
 
 // SIMD iteration - processes 4 pixels at once
-iterate_simd :: proc(x0_vec: simd.f64x4, y0_vec: simd.f64x4, max_iterations: u32) -> ([4]u32, [4]f64) {
+iterate_simd :: proc(
+	x0_vec: simd.f64x4,
+	y0_vec: simd.f64x4,
+	max_iterations: u64,
+) -> (
+	[4]u64,
+	[4]f64,
+) {
 	x := simd.f64x4{0, 0, 0, 0}
 	y := simd.f64x4{0, 0, 0, 0}
 	threshold := simd.f64x4{4.0, 4.0, 4.0, 4.0}
 	zero := simd.f64x4{0, 0, 0, 0}
-	one := simd.f64x4{1, 1, 1, 1}
+	zero_uint := simd.u64x4{0, 0, 0, 0}
+	one_uint := simd.u64x4{1, 1, 1, 1}
 
 	// Track iteration count and active state as f64
-	iter_count := simd.f64x4{0, 0, 0, 0}
-	active := simd.f64x4{1, 1, 1, 1} // 1.0 = active, 0.0 = done
+	iter_count := zero_uint
+	active := one_uint
 
 	magnitude_sq := simd.f64x4{0, 0, 0, 0}
 
-	for iter: u32 = 0; iter < max_iterations; iter += 1 {
+	for iter: u64 = 0; iter < max_iterations; iter += 1 {
 		// Mandelbrot iteration: z = z^2 + c
 		xx := x * x
 		yy := y * y
@@ -219,49 +239,36 @@ iterate_simd :: proc(x0_vec: simd.f64x4, y0_vec: simd.f64x4, max_iterations: u32
 
 		// Calculate magnitude squared (after updating z)
 		magnitude_sq = x * x + y * y
-
-		// Calculate difference: negative if not escaped, positive if escaped
-		diff := magnitude_sq - threshold
-
-		// Convert to 0.0 (not escaped) or positive (escaped)
-		// Then clamp to 0.0 or 1.0
-		escaped := simd.min(one, simd.max(zero, diff))
-
-		// Update active: if escaped, set to 0; otherwise keep 1
-		active = active * (one - escaped)
+		// Check if escaped: magnitude_sq > 4.0
+		// For SIMD, we need a binary result (0.0 or 1.0), not fractional
+		// If magnitude_sq <= 4.0, keep active (active = 1.0)
+		// If magnitude_sq > 4.0, deactivate (active = 0.0)
+		// Use: active = active * (magnitude_sq <= 4.0 ? 1.0 : 0.0)
+		// Simulate with: if (magnitude_sq - 4.0) > 0, then 0, else 1
+		diff := simd.sub(threshold, magnitude_sq)
+		// Map diff to 0.0 (if diff < 0) or 1.0 (if diff >= 0)
+		keep_active := simd.clamp(simd.lanes_ge(diff, zero), zero_uint, one_uint)
+		active = simd.bit_and(active, keep_active)
 
 		// Early exit if all lanes have escaped
-		if simd.reduce_add_bisect(active) == 0.0 {
+		if simd.reduce_or(active) == 0 {
 			break
 		}
 	}
 
 	// Convert to arrays
-	iter_f64 := simd.to_array(iter_count)
+	iterations := simd.to_array(iter_count)
 	mag_sq_f64 := simd.to_array(magnitude_sq)
-
-	iterations := [4]u32{
-		u32(iter_f64[0]),
-		u32(iter_f64[1]),
-		u32(iter_f64[2]),
-		u32(iter_f64[3]),
-	}
-
-	magnitudes := [4]f64{
-		mag_sq_f64[0],
-		mag_sq_f64[1],
-		mag_sq_f64[2],
-		mag_sq_f64[3],
-	}
+	magnitudes := [4]f64{mag_sq_f64[0], mag_sq_f64[1], mag_sq_f64[2], mag_sq_f64[3]}
 
 	return iterations, magnitudes
 }
 
 // Scalar fallback iteration (kept for reference/debugging)
-iterate :: proc(x0: f64, y0: f64, max_iterations: u32) -> (u32, f64) {
+iterate :: proc(x0: f64, y0: f64, max_iterations: u64) -> (u64, f64) {
 	x := 0.0
 	y := 0.0
-	iteration: u32 = 0
+	iteration: u64 = 0
 	magnitude_sq := 0.0
 	for magnitude_sq <= 4.0 && iteration < max_iterations {
 		xtemp := x * x - y * y + x0
@@ -314,7 +321,7 @@ interpolate_color :: proc(palette: visual.Gradient_Palette, t: f64) -> (u8, u8, 
 }
 
 // Calculate smooth iteration count from discrete iteration and final magnitude
-calculate_smooth_iteration :: proc(iter: u32, magnitude_sq: f64) -> f64 {
+calculate_smooth_iteration :: proc(iter: u64, magnitude_sq: f64) -> f64 {
 	// Avoid log of values <= 0
 	if magnitude_sq <= 1.0 {
 		return f64(iter)
@@ -328,7 +335,7 @@ calculate_smooth_iteration :: proc(iter: u32, magnitude_sq: f64) -> f64 {
 	return max(0.0, smooth)
 }
 
-compute_color :: proc(iter: u32, max_iterations: u32, palette: visual.Gradient_Palette) -> u32 {
+compute_color :: proc(iter: u64, max_iterations: u64, palette: visual.Gradient_Palette) -> u32 {
 	color: u32
 	if iter == max_iterations {
 		color = 0xFF000000
@@ -341,7 +348,11 @@ compute_color :: proc(iter: u32, max_iterations: u32, palette: visual.Gradient_P
 }
 
 // Compute color with smooth (fractional) iteration count
-compute_color_smooth :: proc(smooth_iter: f64, max_iterations: u32, palette: visual.Gradient_Palette) -> u32 {
+compute_color_smooth :: proc(
+	smooth_iter: f64,
+	max_iterations: u64,
+	palette: visual.Gradient_Palette,
+) -> u32 {
 	color: u32
 	if smooth_iter >= f64(max_iterations) {
 		color = 0xFF000000

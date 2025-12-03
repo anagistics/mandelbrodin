@@ -31,7 +31,7 @@ App_State :: struct {
 	zoom:                f64,
 	center_x:            f64,
 	center_y:            f64,
-	max_iterations:      u32,
+	max_iterations:      u64,
 	needs_recompute:     bool,
 	use_simd:            bool, // Toggle for SIMD vs scalar computation
 	use_gpu:             bool, // Toggle for GPU vs CPU rendering

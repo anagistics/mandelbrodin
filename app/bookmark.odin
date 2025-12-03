@@ -7,14 +7,14 @@ import "core:time"
 
 // View state for saving/loading
 View_State :: struct {
-	center_x:           f64         `json:"center_x"`,
-	center_y:           f64         `json:"center_y"`,
-	zoom:               f64         `json:"zoom"`,
-	max_iterations:     u32         `json:"max_iterations"`,
-	palette:            string      `json:"palette"`,
-	use_smooth_coloring: bool       `json:"use_smooth_coloring"`,
-	name:               string      `json:"name,omitempty"`,
-	created_at:         string      `json:"created_at,omitempty"`,
+	center_x:            f64 `json:"center_x"`,
+	center_y:            f64 `json:"center_y"`,
+	zoom:                f64 `json:"zoom"`,
+	max_iterations:      u64 `json:"max_iterations"`,
+	palette:             string `json:"palette"`,
+	use_smooth_coloring: bool `json:"use_smooth_coloring"`,
+	name:                string `json:"name,omitempty"`,
+	created_at:          string `json:"created_at,omitempty"`,
 }
 
 // Bookmark entry for UI display
@@ -26,14 +26,14 @@ Bookmark :: struct {
 // Save current view to JSON file
 save_view :: proc(state: ^App_State, filepath: string, name: string = "") -> bool {
 	view := View_State {
-		center_x           = state.center_x,
-		center_y           = state.center_y,
-		zoom               = state.zoom,
-		max_iterations     = state.max_iterations,
-		palette            = state.palette,
+		center_x            = state.center_x,
+		center_y            = state.center_y,
+		zoom                = state.zoom,
+		max_iterations      = state.max_iterations,
+		palette             = state.palette,
 		use_smooth_coloring = state.use_smooth_coloring,
-		name               = name,
-		created_at         = fmt.tprintf("%v", time.now()),
+		name                = name,
+		created_at          = fmt.tprintf("%v", time.now()),
 	}
 
 	data, err := json.marshal(view, {pretty = true, use_spaces = true, spaces = 2})
@@ -118,7 +118,7 @@ load_bookmarks :: proc(state: ^App_State) {
 
 		// Check if file ends with .json
 		name := info.name
-		if len(name) < 5 || name[len(name)-5:] != ".json" {
+		if len(name) < 5 || name[len(name) - 5:] != ".json" {
 			continue
 		}
 
@@ -127,7 +127,7 @@ load_bookmarks :: proc(state: ^App_State) {
 		if ok {
 			bookmark := Bookmark {
 				filename = fmt.aprintf("%s", name),
-				view = view,
+				view     = view,
 			}
 			append(&state.bookmarks, bookmark)
 		}
@@ -138,7 +138,7 @@ load_bookmarks :: proc(state: ^App_State) {
 save_bookmark :: proc(state: ^App_State, filename: string, name: string = "") {
 	// Ensure .json extension
 	filepath: string
-	if len(filename) < 5 || filename[len(filename)-5:] != ".json" {
+	if len(filename) < 5 || filename[len(filename) - 5:] != ".json" {
 		filepath = fmt.tprintf("%s/%s.json", state.bookmarks_dir, filename)
 	} else {
 		filepath = fmt.tprintf("%s/%s", state.bookmarks_dir, filename)

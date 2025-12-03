@@ -1,7 +1,6 @@
 package ui
 
 import app "../app"
-import visual "../visual"
 import "core:fmt"
 import "core:strings"
 import imgui "vendor:imgui"

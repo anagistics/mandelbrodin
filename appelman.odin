@@ -22,6 +22,25 @@ PANEL_WIDTH :: 300
 WINDOW_WIDTH :: WIDTH + PANEL_WIDTH
 WINDOW_HEIGHT :: HEIGHT
 
+// Convert screen coordinates to world coordinates
+screen_to_world :: proc(
+	state: ^app.App_State,
+	screen_x, screen_y: i32,
+	width, height: int,
+) -> (
+	f64,
+	f64,
+) {
+	scale := 3.5 / state.zoom
+	offset_x := state.center_x - (1.75 / state.zoom)
+	offset_y := state.center_y - (1.0 / state.zoom)
+
+	world_x := f64(screen_x) / f64(width) * scale + offset_x
+	world_y := f64(screen_y) / f64(height) * (2.0 / state.zoom) + offset_y
+
+	return world_x, world_y
+}
+
 main :: proc() {
 	state := app.App_State {
 		pixels              = make([]u32, WIDTH * HEIGHT),
@@ -114,7 +133,12 @@ main :: proc() {
 	defer renderer.Destroy(&render_context)
 
 	// Load palettes
-	app.load_palettes_from_dir(&state)
+	state.palettes = visual.load_palettes(state.palettes_dir)
+	if len(state.palettes) == 0 {
+		fmt.eprintln("Warning: No palettes loaded, using default palette")
+		state.palette = "Classic"
+		state.current_palette = visual.DEFAULT_PALETTE
+	}
 
 	// Set initial palette (will use loaded palette or fall back to default)
 	app.set_palette(&state, "Classic")
@@ -167,7 +191,7 @@ main :: proc() {
 						app.history_save(&state)
 
 						// Get world coordinates before zoom
-						world_x, world_y := app.screen_to_world(
+						world_x, world_y := screen_to_world(
 							&state,
 							mouse_x,
 							mouse_y,
@@ -184,7 +208,7 @@ main :: proc() {
 						}
 
 						// Adjust center to keep mouse position fixed in world coordinates
-						new_world_x, new_world_y := app.screen_to_world(
+						new_world_x, new_world_y := screen_to_world(
 							&state,
 							mouse_x,
 							mouse_y,
@@ -219,7 +243,7 @@ main :: proc() {
 							} else {
 								// Simple click to recenter
 								app.history_save(&state)
-								world_x, world_y := app.screen_to_world(
+								world_x, world_y := screen_to_world(
 									&state,
 									mouse_x,
 									mouse_y,
@@ -257,8 +281,8 @@ main :: proc() {
 						app.history_save(&state)
 
 						// Get world coordinates of box corners
-						world_x1, world_y1 := app.screen_to_world(&state, x1, y1, WIDTH, HEIGHT)
-						world_x2, world_y2 := app.screen_to_world(&state, x2, y2, WIDTH, HEIGHT)
+						world_x1, world_y1 := screen_to_world(&state, x1, y1, WIDTH, HEIGHT)
+						world_x2, world_y2 := screen_to_world(&state, x2, y2, WIDTH, HEIGHT)
 
 						// Calculate new center
 						state.center_x = (world_x1 + world_x2) / 2.0

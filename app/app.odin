@@ -6,23 +6,19 @@ import "core:strings"
 import "core:time"
 import stbi "vendor:stb/image"
 
-// Convert screen coordinates to world coordinates
-screen_to_world :: proc(
-	state: ^App_State,
-	screen_x, screen_y: i32,
-	width, height: int,
-) -> (
-	f64,
-	f64,
-) {
-	scale := 3.5 / state.zoom
-	offset_x := state.center_x - (1.75 / state.zoom)
-	offset_y := state.center_y - (1.0 / state.zoom)
-
-	world_x := f64(screen_x) / f64(width) * scale + offset_x
-	world_y := f64(screen_y) / f64(height) * (2.0 / state.zoom) + offset_y
-
-	return world_x, world_y
+// Set the current palette by name, falling back to default if not found
+set_palette :: proc(state: ^App_State, palette_name: string) {
+	palette, found := visual.find_palette(state.palettes[:], palette_name)
+	if found {
+		state.palette = palette_name
+		state.current_palette = palette
+		state.needs_recompute = true
+	} else {
+		fmt.eprintln("Warning: Palette not found:", palette_name, "- using default")
+		state.palette = "Classic"
+		state.current_palette = visual.DEFAULT_PALETTE
+		state.needs_recompute = true
+	}
 }
 
 App_State :: struct {

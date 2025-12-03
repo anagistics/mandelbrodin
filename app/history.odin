@@ -1,7 +1,5 @@
 package app
 
-import visual "../visual"
-
 // History entry for navigation
 History_Entry :: struct {
 	center_x:            f64,

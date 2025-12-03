@@ -2,6 +2,7 @@ package mandelbrot
 
 import app "../app"
 import visual "../visual"
+import "core:math"
 import "core:simd"
 import "core:thread"
 
@@ -83,15 +84,35 @@ compute_scalar_worker :: proc(t: ^thread.Thread) {
 	blocks := width / N
 	px: [N]int
 	x0: [N]f64
+	y0: [N]f64
+
+	// Precompute rotation values
+	cos_r := math.cos(state.rotation)
+	sin_r := math.sin(state.rotation)
+	scale_x := 3.5 / state.zoom
+	scale_y := 2.0 / state.zoom
 
 	for py in data.row_start ..< data.row_end {
-		y0 := f64(py) / f64(height) * (2.0 / state.zoom) + data.offset_y
+		// Convert to normalized coordinates
+		norm_y := f64(py) / f64(height) - 0.5
+
 		for blck in 0 ..< blocks {
 			base := blck * N
 			#unroll for i in 0 ..< N {
 				px[i] = base + i
-				x0[i] = f64(px[i]) / f64(width) * data.scale + data.offset_x
-				iterations, magnitude_sq := iterate(x0[i], y0, state.max_iterations)
+
+				// Convert to normalized coordinates
+				norm_x := f64(px[i]) / f64(width) - 0.5
+
+				// Apply rotation
+				rotated_x := norm_x * cos_r - norm_y * sin_r
+				rotated_y := norm_x * sin_r + norm_y * cos_r
+
+				// Scale to world coordinates
+				x0[i] = rotated_x * scale_x + state.center_x
+				y0[i] = rotated_y * scale_y + state.center_y
+
+				iterations, magnitude_sq := iterate(x0[i], y0[i], state.max_iterations)
 				color := visual.Compute_pixel_color(
 					iterations,
 					magnitude_sq,
@@ -153,22 +174,43 @@ compute_simd_worker :: proc(t: ^thread.Thread) {
 
 	blocks := width / SIMD_WIDTH
 
-	// Precompute constant SIMD vectors for x-coordinate calculation
+	// Precompute rotation values
+	cos_r := math.cos(state.rotation)
+	sin_r := math.sin(state.rotation)
+	scale_x := 3.5 / state.zoom
+	scale_y := 2.0 / state.zoom
+
+	// SIMD vectors for rotation and scaling
 	width_vec := simd.f64x4{f64(width), f64(width), f64(width), f64(width)}
-	scale_vec := simd.f64x4{data.scale, data.scale, data.scale, data.scale}
-	offset_vec := simd.f64x4{data.offset_x, data.offset_x, data.offset_x, data.offset_x}
+	height_vec := simd.f64x4{f64(height), f64(height), f64(height), f64(height)}
+	half := simd.f64x4{0.5, 0.5, 0.5, 0.5}
+	cos_r_vec := simd.f64x4{cos_r, cos_r, cos_r, cos_r}
+	sin_r_vec := simd.f64x4{sin_r, sin_r, sin_r, sin_r}
+	scale_x_vec := simd.f64x4{scale_x, scale_x, scale_x, scale_x}
+	scale_y_vec := simd.f64x4{scale_y, scale_y, scale_y, scale_y}
+	center_x_vec := simd.f64x4{state.center_x, state.center_x, state.center_x, state.center_x}
+	center_y_vec := simd.f64x4{state.center_y, state.center_y, state.center_y, state.center_y}
 	pixel_offsets := simd.f64x4{0, 1, 2, 3}
 
 	for py in data.row_start ..< data.row_end {
-		y0 := f64(py) / f64(height) * (2.0 / state.zoom) + data.offset_y
-		y0_vec := simd.f64x4(y0)
+		// Convert y to normalized coordinates
+		py_vec := simd.f64x4{f64(py), f64(py), f64(py), f64(py)}
+		norm_y_vec := py_vec / height_vec - half
 
 		for blck in 0 ..< blocks {
 			base := blck * SIMD_WIDTH
 
-			// Build x0 vector for 4 pixels using SIMD operations
+			// Convert x to normalized coordinates for 4 pixels
 			base_vec := simd.f64x4{f64(base), f64(base), f64(base), f64(base)} + pixel_offsets
-			x0_vec := (base_vec / width_vec) * scale_vec + offset_vec
+			norm_x_vec := base_vec / width_vec - half
+
+			// Apply rotation
+			rotated_x_vec := norm_x_vec * cos_r_vec - norm_y_vec * sin_r_vec
+			rotated_y_vec := norm_x_vec * sin_r_vec + norm_y_vec * cos_r_vec
+
+			// Scale to world coordinates
+			x0_vec := rotated_x_vec * scale_x_vec + center_x_vec
+			y0_vec := rotated_y_vec * scale_y_vec + center_y_vec
 
 			// Compute iterations for 4 pixels simultaneously
 			iterations, magnitudes := iterate_simd(x0_vec, y0_vec, state.max_iterations)

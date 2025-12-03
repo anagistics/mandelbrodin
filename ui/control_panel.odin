@@ -8,27 +8,10 @@ import imgui "vendor:imgui"
 
 // Render just the content of the control panel (for use in tabs)
 Render_control_panel_content :: proc(state: ^app.App_State, width: int, height: int) {
-topRightControl := imgui.Vec2{f32(width), 0}
-bottomLeftControl := imgui.Vec2{0, f32(height)}
+	topRightControl := imgui.Vec2{f32(width), 0}
+	bottomLeftControl := imgui.Vec2{0, f32(height)}
 
-imgui.Text("Mandelbrot Set Explorer")
-	imgui.Separator()
-
-	// Current cursor coordinates
-	mousePos := imgui.GetMousePos()
-	imgui.Text("Mouse X:")
-	if mousePos.x >= bottomLeftControl.x && mousePos.x <= topRightControl.x {
-		imgui.Text(fmt.ctprintf("%.2f", mousePos.x))
-	} else {
-		imgui.Text("...")
-	}
-	imgui.Text("Mouse Y:")
-	if mousePos.y <= bottomLeftControl.y && mousePos.y >= topRightControl.y {
-		imgui.Text(fmt.ctprintf("%.2f", mousePos.y))
-	} else {
-		imgui.Text("...")
-	}
-
+	imgui.Text("Mandelbrot Set Explorer")
 	// Performance info
 	imgui.Text("Computation Time:")
 	time_str := fmt.ctprintf("  %.2f ms", state.computation_time_ms)
@@ -59,7 +42,9 @@ imgui.Text("Mandelbrot Set Explorer")
 		state.needs_recompute = true
 	}
 	if imgui.IsItemHovered() {
-		imgui.SetTooltip("Use continuous iteration count for smooth gradients (eliminates color banding)")
+		imgui.SetTooltip(
+			"Use continuous iteration count for smooth gradients (eliminates color banding)",
+		)
 	}
 
 	imgui.Separator()
@@ -215,13 +200,7 @@ imgui.Text("Mandelbrot Set Explorer")
 	imgui.Text("Quality Settings")
 	min_iter: u32 = 32
 	max_iter: u32 = 2048
-	if imgui.SliderScalar(
-		"Max Iterations",
-		.U32,
-		&state.max_iterations,
-		&min_iter,
-		&max_iter,
-	) {
+	if imgui.SliderScalar("Max Iterations", .U32, &state.max_iterations, &min_iter, &max_iter) {
 		state.needs_recompute = true
 	}
 

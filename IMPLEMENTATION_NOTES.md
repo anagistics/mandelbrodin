@@ -504,6 +504,89 @@ calculate_smooth_iteration :: proc(iter: u64, magnitude_sq: f64) -> f64 {
 - Especially noticeable at lower iteration counts or in zoomed views
 - Works with all palette types
 
+### 12. View Rotation
+
+Implemented in `appelman.odin`, `mandelbrot/mandelbrot.odin`, `shaders/mandelbrot.frag`, and `ui/control_panel.odin`
+
+**Overview**
+- Rotate the Mandelbrot view around its center point
+- Full 360° rotation support
+- Works with all mouse interactions (pan, zoom, box zoom)
+- Supported in both GPU and CPU rendering modes
+- Rotation persisted in history and bookmarks
+
+**User Controls**
+1. **CTRL + Mouse Wheel** - Rotate by 5° increments
+   - Scroll up: rotate counter-clockwise
+   - Scroll down: rotate clockwise
+   - Angle normalized to [0°, 360°) range
+
+2. **UI Slider** (`ui/control_panel.odin:191-195`)
+   - Precise rotation control from 0° to 360°
+   - Real-time visual feedback
+   - Displays current angle with degree symbol (°)
+
+3. **Reset View Button** - Resets rotation to 0° along with zoom/center
+
+**Coordinate Transformation** (`appelman.odin:35-53`)
+```odin
+// 1. Convert to normalized coordinates [-0.5, 0.5]
+norm_x := f64(screen_x) / f64(width) - 0.5
+norm_y := f64(screen_y) / f64(height) - 0.5
+
+// 2. Apply rotation matrix
+cos_r := math.cos(state.rotation)
+sin_r := math.sin(state.rotation)
+rotated_x := norm_x * cos_r - norm_y * sin_r
+rotated_y := norm_x * sin_r + norm_y * cos_r
+
+// 3. Scale to world coordinates
+world_x := rotated_x * scale_x + state.center_x
+world_y := rotated_y * scale_y + state.center_y
+```
+
+**Implementation Consistency**
+All rendering paths apply identical rotation transformation:
+
+1. **GPU Shader** (`shaders/mandelbrot.frag:99-116`)
+   - Rotation applied in fragment shader
+   - `u_rotation` uniform passed from CPU
+   - Same normalize → rotate → scale → translate pipeline
+
+2. **CPU Scalar** (`mandelbrot/mandelbrot.odin:89-115`)
+   - Precomputes cos/sin once per worker thread
+   - Applies rotation for each pixel individually
+   - 8-way loop unrolling maintained
+
+3. **CPU SIMD** (`mandelbrot/mandelbrot.odin:177-216`)
+   - Vectorized rotation using 4-wide SIMD
+   - All rotation values broadcast to SIMD vectors
+   - Processes 4 pixels simultaneously with rotation
+
+**Mouse Interaction Integration**
+All mouse operations work correctly in rotated views:
+- **Zoom** (wheel): Zoom centered at mouse cursor works in rotated space
+- **Pan** (right-drag): Dragging correctly translates in rotated view
+- **Recenter** (left-click): Clicked point becomes new center
+- **Box Zoom** (shift-drag): Selection box corners correctly transformed
+
+**Data Persistence**
+- **History** (`app/history.odin:8,31,65`) - Rotation tracked for undo/redo
+- **Bookmarks** (`app/bookmark.odin:13,33,81`) - Rotation saved in JSON format
+- **Backward Compatibility** - Old bookmarks without rotation default to 0°
+
+**Rotation Storage**
+- Internal: Stored in radians (`state.rotation: f64`)
+- Display: Shown in degrees for user-friendliness
+- Conversion: `math.to_radians()` / `math.to_degrees()`
+- Normalization: Always kept in [0, 2π) range
+
+**Visual Behavior**
+- Rotation is around the view center point
+- Zoom level and center position remain fixed during rotation
+- Fractal detail preserved during rotation
+- No visual artifacts or discontinuities
+
 ## Performance Characteristics
 
 ### Expected Speedup
@@ -611,14 +694,25 @@ Toggle rendering modes in the UI to compare performance:
 - Combined with 8 threads: 32 pixels computed in parallel (4 SIMD lanes × 8 threads)
 
 ### Coordinate Conversion
-The `screen_to_world` function in `appelman.odin:25-42` converts pixel coordinates to complex plane coordinates:
+The `screen_to_world` function in `appelman.odin:26-54` converts pixel coordinates to complex plane coordinates with rotation support:
 ```odin
-scale := 3.5 / state.zoom
-offset_x := state.center_x - (1.75 / state.zoom)
-offset_y := state.center_y - (1.0 / state.zoom)
-world_x := f64(screen_x) / f64(width) * scale + offset_x
-world_y := f64(screen_y) / f64(height) * (2.0 / state.zoom) + offset_y
+// Convert to normalized coordinates [-0.5, 0.5] centered at origin
+norm_x := f64(screen_x) / f64(width) - 0.5
+norm_y := f64(screen_y) / f64(height) - 0.5
+
+// Apply rotation
+cos_r := math.cos(state.rotation)
+sin_r := math.sin(state.rotation)
+rotated_x := norm_x * cos_r - norm_y * sin_r
+rotated_y := norm_x * sin_r + norm_y * cos_r
+
+// Scale to world coordinates
+scale_x := 3.5 / state.zoom
+scale_y := 2.0 / state.zoom
+world_x := rotated_x * scale_x + state.center_x
+world_y := rotated_y * scale_y + state.center_y
 ```
+This transformation is applied consistently across all rendering modes (GPU shader, CPU scalar, CPU SIMD) and mouse interaction.
 
 ### Build Instructions
 
@@ -662,8 +756,10 @@ odin build . -debug -out:mandelbrodin
 - **Left Click** - Recenter view
 - **Right Drag** - Pan view
 - **Mouse Wheel** - Zoom in/out
+- **Ctrl+Wheel** - Rotate view (5° increments)
 - **Shift+Drag** - Box zoom selection
 - Only active over Mandelbrot area (not UI panels)
+- All controls work correctly in rotated views
 
 ## Future Optimization Opportunities
 

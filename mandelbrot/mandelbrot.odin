@@ -240,15 +240,13 @@ iterate_simd :: proc(
 		// Calculate magnitude squared (after updating z)
 		magnitude_sq = x * x + y * y
 		// Check if escaped: magnitude_sq > 4.0
-		// For SIMD, we need a binary result (0.0 or 1.0), not fractional
-		// If magnitude_sq <= 4.0, keep active (active = 1.0)
-		// If magnitude_sq > 4.0, deactivate (active = 0.0)
+		// For SIMD, we need a binary result (0 or 1), not fractional
+		// If magnitude_sq <= 4.0, keep active (active = 1)
+		// If magnitude_sq > 4.0, deactivate (active = 0)
 		// Use: active = active * (magnitude_sq <= 4.0 ? 1.0 : 0.0)
 		// Simulate with: if (magnitude_sq - 4.0) > 0, then 0, else 1
-		diff := simd.sub(threshold, magnitude_sq)
-		// Map diff to 0.0 (if diff < 0) or 1.0 (if diff >= 0)
-		keep_active := simd.clamp(simd.lanes_ge(diff, zero), zero_uint, one_uint)
-		active = simd.bit_and(active, keep_active)
+		not_escaped := simd.lanes_le(magnitude_sq, threshold)
+		active = simd.select(not_escaped, active, zero_uint)
 
 		// Early exit if all lanes have escaped
 		if simd.reduce_or(active) == 0 {

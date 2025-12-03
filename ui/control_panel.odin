@@ -2,6 +2,7 @@ package ui
 
 import app "../app"
 import "core:fmt"
+import "core:math"
 import "core:strings"
 import imgui "vendor:imgui"
 
@@ -186,11 +187,19 @@ Render_control_panel_content :: proc(state: ^app.App_State, width: int, height: 
 		state.needs_recompute = true
 	}
 
+	// Rotation controls
+	rotation_deg := f32(math.to_degrees(state.rotation))
+	if imgui.SliderFloat("Rotation", &rotation_deg, 0.0, 360.0, "%.1f\u00b0", {}) {
+		state.rotation = math.to_radians(f64(rotation_deg))
+		state.needs_recompute = true
+	}
+
 	if imgui.Button("Reset View") {
 		app.history_save(state)
 		state.zoom = 1.0
 		state.center_x = -0.5
 		state.center_y = 0.0
+		state.rotation = 0.0
 		state.needs_recompute = true
 	}
 
@@ -215,6 +224,7 @@ Render_control_panel_content :: proc(state: ^app.App_State, width: int, height: 
 	imgui.BulletText("Left Click: Recenter")
 	imgui.BulletText("Right Drag: Pan view")
 	imgui.BulletText("Mouse Wheel: Zoom")
+	imgui.BulletText("Ctrl+Wheel: Rotate")
 	imgui.BulletText("Shift+Drag: Box zoom")
 
 	// Keyboard controls info

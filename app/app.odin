@@ -27,6 +27,7 @@ App_State :: struct {
 	zoom:                f64,
 	center_x:            f64,
 	center_y:            f64,
+	rotation:            f64, // Rotation angle in radians
 	max_iterations:      u64,
 	needs_recompute:     bool,
 	use_simd:            bool, // Toggle for SIMD vs scalar computation

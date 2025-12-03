@@ -6,6 +6,7 @@ out vec4 FragColor;
 uniform vec2 u_resolution;
 uniform float u_zoom;
 uniform vec2 u_center;
+uniform float u_rotation;
 uniform int u_max_iterations;
 uniform bool u_use_smooth_coloring;
 
@@ -95,14 +96,22 @@ float calculate_smooth_iteration(int iter, float magnitude_sq) {
 
 void main()
 {
-    // Convert screen coordinates to world coordinates
-    float scale = 3.5 / u_zoom;
-    float offset_x = u_center.x - (1.75 / u_zoom);
-    float offset_y = u_center.y - (1.0 / u_zoom);
+    // Convert to normalized coordinates [-0.5, 0.5] centered at origin
+    float norm_x = TexCoord.x - 0.5;
+    float norm_y = TexCoord.y - 0.5;
 
-    float x0 = TexCoord.x * scale + offset_x;
-    // Flip Y coordinate to match CPU version (Y=0 at top)
-    float y0 = (1.0 - TexCoord.y) * (2.0 / u_zoom) + offset_y;
+    // Apply rotation
+    float cos_r = cos(u_rotation);
+    float sin_r = sin(u_rotation);
+    float rotated_x = norm_x * cos_r - norm_y * sin_r;
+    float rotated_y = norm_x * sin_r + norm_y * cos_r;
+
+    // Scale to world coordinates
+    float scale_x = 3.5 / u_zoom;
+    float scale_y = 2.0 / u_zoom;
+
+    float x0 = rotated_x * scale_x + u_center.x;
+    float y0 = rotated_y * scale_y + u_center.y;
 
     vec2 c = vec2(x0, y0);
 

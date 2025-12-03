@@ -5,6 +5,7 @@ History_Entry :: struct {
 	center_x:            f64,
 	center_y:            f64,
 	zoom:                f64,
+	rotation:            f64,
 	max_iterations:      u64,
 	palette:             string,
 	use_smooth_coloring: bool,
@@ -27,6 +28,7 @@ history_save :: proc(state: ^App_State) {
 		center_x            = state.center_x,
 		center_y            = state.center_y,
 		zoom                = state.zoom,
+		rotation            = state.rotation,
 		max_iterations      = state.max_iterations,
 		palette             = state.palette,
 		use_smooth_coloring = state.use_smooth_coloring,
@@ -58,6 +60,7 @@ history_back :: proc(state: ^App_State) -> bool {
 	state.center_x = entry.center_x
 	state.center_y = entry.center_y
 	state.zoom = entry.zoom
+	state.rotation = entry.rotation
 	state.max_iterations = entry.max_iterations
 	state.use_smooth_coloring = entry.use_smooth_coloring
 	set_palette(state, entry.palette)
@@ -79,6 +82,7 @@ history_forward :: proc(state: ^App_State) -> bool {
 	state.center_x = entry.center_x
 	state.center_y = entry.center_y
 	state.zoom = entry.zoom
+	state.rotation = entry.rotation
 	state.max_iterations = entry.max_iterations
 	state.use_smooth_coloring = entry.use_smooth_coloring
 	set_palette(state, entry.palette)

@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import "core:math"
 import "core:mem"
 import "core:time"
 import gl "vendor:OpenGL"
@@ -31,12 +32,22 @@ screen_to_world :: proc(
 	f64,
 	f64,
 ) {
-	scale := 3.5 / state.zoom
-	offset_x := state.center_x - (1.75 / state.zoom)
-	offset_y := state.center_y - (1.0 / state.zoom)
+	// Convert to normalized coordinates [-0.5, 0.5] centered at origin
+	norm_x := f64(screen_x) / f64(width) - 0.5
+	norm_y := f64(screen_y) / f64(height) - 0.5
 
-	world_x := f64(screen_x) / f64(width) * scale + offset_x
-	world_y := f64(screen_y) / f64(height) * (2.0 / state.zoom) + offset_y
+	// Apply rotation
+	cos_r := math.cos(state.rotation)
+	sin_r := math.sin(state.rotation)
+	rotated_x := norm_x * cos_r - norm_y * sin_r
+	rotated_y := norm_x * sin_r + norm_y * cos_r
+
+	// Scale to world coordinates
+	scale_x := 3.5 / state.zoom
+	scale_y := 2.0 / state.zoom
+
+	world_x := rotated_x * scale_x + state.center_x
+	world_y := rotated_y * scale_y + state.center_y
 
 	return world_x, world_y
 }
@@ -47,6 +58,7 @@ main :: proc() {
 		zoom                = 1.0,
 		center_x            = -0.5,
 		center_y            = 0.0,
+		rotation            = 0.0,
 		max_iterations      = MAX_ITER,
 		needs_recompute     = true,
 		computation_time_ms = 0.0,
@@ -185,38 +197,58 @@ main :: proc() {
 					mouse_x, mouse_y: i32
 					SDL.GetMouseState(&mouse_x, &mouse_y)
 
-					// Only zoom if mouse is over the Mandelbrot area
+					// Only handle if mouse is over the Mandelbrot area
 					if mouse_x >= 0 && mouse_x < WIDTH && mouse_y >= 0 && mouse_y < HEIGHT {
+						// Check if CTRL is pressed
+						mod_state := SDL.GetModState()
+						ctrl_pressed := (mod_state & SDL.KMOD_CTRL) != SDL.Keymod{}
+
 						// Save current state before changing
 						app.history_save(&state)
 
-						// Get world coordinates before zoom
-						world_x, world_y := screen_to_world(
-							&state,
-							mouse_x,
-							mouse_y,
-							WIDTH,
-							HEIGHT,
-						)
+						if ctrl_pressed {
+							// CTRL + Mouse Wheel: Rotate
+							rotation_increment := math.to_radians(f64(5.0)) // 5 degrees
+							if event.wheel.y > 0 {
+								state.rotation += rotation_increment
+							} else if event.wheel.y < 0 {
+								state.rotation -= rotation_increment
+							}
+							// Normalize rotation to [0, 2π)
+							state.rotation = math.mod(state.rotation, 2.0 * math.PI)
+							if state.rotation < 0 {
+								state.rotation += 2.0 * math.PI
+							}
+						} else {
+							// Normal Mouse Wheel: Zoom
+							// Get world coordinates before zoom
+							world_x, world_y := screen_to_world(
+								&state,
+								mouse_x,
+								mouse_y,
+								WIDTH,
+								HEIGHT,
+							)
 
-						// Zoom in or out
-						zoom_factor := 1.2
-						if event.wheel.y > 0 {
-							state.zoom *= zoom_factor
-						} else if event.wheel.y < 0 {
-							state.zoom /= zoom_factor
+							// Zoom in or out
+							zoom_factor := 1.2
+							if event.wheel.y > 0 {
+								state.zoom *= zoom_factor
+							} else if event.wheel.y < 0 {
+								state.zoom /= zoom_factor
+							}
+
+							// Adjust center to keep mouse position fixed in world coordinates
+							new_world_x, new_world_y := screen_to_world(
+								&state,
+								mouse_x,
+								mouse_y,
+								WIDTH,
+								HEIGHT,
+							)
+							state.center_x += world_x - new_world_x
+							state.center_y += world_y - new_world_y
 						}
-
-						// Adjust center to keep mouse position fixed in world coordinates
-						new_world_x, new_world_y := screen_to_world(
-							&state,
-							mouse_x,
-							mouse_y,
-							WIDTH,
-							HEIGHT,
-						)
-						state.center_x += world_x - new_world_x
-						state.center_y += world_y - new_world_y
 
 						state.needs_recompute = true
 					}

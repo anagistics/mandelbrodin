@@ -18,6 +18,7 @@ Renderer :: struct {
 	u_resolution:           i32,
 	u_zoom:                 i32,
 	u_center:               i32,
+	u_rotation:             i32,
 	u_max_iterations:       i32,
 	u_use_smooth_coloring:  i32,
 	u_num_stops:            i32,
@@ -147,6 +148,7 @@ Init :: proc(r: ^Renderer, width: int, height: int) -> bool {
 	r.u_resolution = gl.GetUniformLocation(r.mandelbrot_program, "u_resolution")
 	r.u_zoom = gl.GetUniformLocation(r.mandelbrot_program, "u_zoom")
 	r.u_center = gl.GetUniformLocation(r.mandelbrot_program, "u_center")
+	r.u_rotation = gl.GetUniformLocation(r.mandelbrot_program, "u_rotation")
 	r.u_max_iterations = gl.GetUniformLocation(r.mandelbrot_program, "u_max_iterations")
 	r.u_use_smooth_coloring = gl.GetUniformLocation(r.mandelbrot_program, "u_use_smooth_coloring")
 	r.u_num_stops = gl.GetUniformLocation(r.mandelbrot_program, "u_num_stops")
@@ -174,6 +176,7 @@ Render_GPU :: proc(r: ^Renderer, state: ^app.App_State, width: int, height: int)
 	gl.Uniform2f(r.u_resolution, f32(width), f32(height))
 	gl.Uniform1f(r.u_zoom, f32(state.zoom))
 	gl.Uniform2f(r.u_center, f32(state.center_x), f32(state.center_y))
+	gl.Uniform1f(r.u_rotation, f32(state.rotation))
 	gl.Uniform1i(r.u_max_iterations, i32(state.max_iterations))
 	gl.Uniform1i(r.u_use_smooth_coloring, i32(state.use_smooth_coloring ? 1 : 0))
 

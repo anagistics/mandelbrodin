@@ -8,7 +8,7 @@ This document describes the implementation of a high-performance Mandelbrot set 
 
 ### 1. Interactive Mouse Controls
 
-Implemented in `appelman.odin:96-214` and `app/app.odin:4-12`
+Implemented in `appelman.odin` (mouse event handling and screen_to_world coordinate conversion)
 
 **Mouse Wheel Zoom**
 - Scroll to zoom in/out with 1.2x zoom factor per step
@@ -457,6 +457,53 @@ Implemented in `mandelbrot/mandelbrot.odin:98-185`
 - Tooltip indicates "AVX 4-wide vectorization"
 - Both paths now benefit from multithreading
 
+### 11. Smooth Coloring
+
+Implemented in `visual/coloring.odin` and `mandelbrot/mandelbrot.odin`
+
+**Overview**
+- Continuous iteration count for smooth color gradients
+- Eliminates color banding artifacts at escape boundaries
+- Uses escape distance estimation formula
+- Runtime toggle via UI checkbox
+- Supported in both GPU and CPU rendering modes
+
+**Implementation** (`visual/coloring.odin:68-80`)
+```odin
+calculate_smooth_iteration :: proc(iter: u64, magnitude_sq: f64) -> f64 {
+    if magnitude_sq <= 1.0 {
+        return f64(iter)
+    }
+    magnitude := math.sqrt(magnitude_sq)
+    smooth := f64(iter) + 1.0 - math.ln(math.ln(magnitude)) / math.ln(f64(2.0))
+    return max(0.0, smooth)
+}
+```
+
+**Mathematical Formula**
+- Standard formula: `smooth_iter = n + 1 - log(log(|z|)) / log(2)`
+- Where `n` is discrete iteration count and `|z|` is final magnitude at escape
+- Produces fractional iteration values (e.g., 42.73 instead of 43)
+- Interpolates colors based on fractional position in palette
+
+**Critical SIMD Fix** (`mandelbrot/mandelbrot.odin:202,224-225`)
+- SIMD version must preserve magnitude at moment of escape
+- Uses `escape_magnitude_sq` to store magnitude when pixel first escapes
+- Without this fix, SIMD continues updating magnitude after escape, producing incorrect smooth coloring
+- Scalar and SIMD now produce identical results
+
+**Color Application** (`visual/coloring.odin:6-24`)
+- `Compute_pixel_color()` function handles both discrete and smooth coloring
+- Smooth mode: calls `calculate_smooth_iteration()` then `compute_color_smooth()`
+- Discrete mode: uses integer iteration count with `compute_color()`
+- Both modes use same gradient interpolation logic
+
+**Visual Impact**
+- Discrete coloring: Sharp color transitions at escape boundaries (banding effect)
+- Smooth coloring: Gradual color transitions, eliminates visible bands
+- Especially noticeable at lower iteration counts or in zoomed views
+- Works with all palette types
+
 ## Performance Characteristics
 
 ### Expected Speedup
@@ -508,11 +555,10 @@ Toggle rendering modes in the UI to compare performance:
 
 ```
 /~/mandelbrodin/
-├── appelman.odin                  # Main application, OpenGL/SDL setup, event handling
+├── appelman.odin                  # Main application, OpenGL/SDL setup, event handling, screen_to_world
 ├── app/
-│   ├── app.odin                  # Core app state and coordinate helpers
+│   ├── app.odin                  # Core app state, set_palette function
 │   ├── bookmark.odin             # Bookmark management (save/load/delete views)
-│   ├── palette.odin              # Palette management (load/set palettes)
 │   ├── export.odin               # Image export functions (PNG encoding)
 │   └── history.odin              # Navigation history (back/forward)
 ├── mandelbrot/
@@ -521,7 +567,8 @@ Toggle rendering modes in the UI to compare performance:
 │   ├── renderer.odin             # OpenGL renderer: shader loading, GPU/CPU rendering
 │   └── export.odin               # High-resolution image export computation
 ├── visual/
-│   └── palette.odin              # Palette loading, validation, color gradients
+│   ├── palette.odin              # Palette loading, validation, color gradients
+│   └── coloring.odin             # Color computation, smooth coloring, gradient interpolation
 ├── ui/
 │   ├── ui.odin                   # Package documentation
 │   ├── tabbed_panel.odin         # Main tabbed panel wrapper
@@ -564,7 +611,7 @@ Toggle rendering modes in the UI to compare performance:
 - Combined with 8 threads: 32 pixels computed in parallel (4 SIMD lanes × 8 threads)
 
 ### Coordinate Conversion
-The `screen_to_world` function in `app/app.odin:4-12` converts pixel coordinates to complex plane coordinates:
+The `screen_to_world` function in `appelman.odin:25-42` converts pixel coordinates to complex plane coordinates:
 ```odin
 scale := 3.5 / state.zoom
 offset_x := state.center_x - (1.75 / state.zoom)
@@ -661,10 +708,11 @@ odin build . -debug -out:mandelbrodin
    - Double SIMD throughput: 8 pixels per vector instead of 4
    - Requires AVX-512 capable CPU (Intel Skylake-X or newer)
 
-9. **Smooth coloring**: Continuous iteration count for better gradients
-   - Use escape distance estimation for smooth color interpolation
+9. ~~**Smooth coloring**: Continuous iteration count for better gradients~~ ✓ **IMPLEMENTED**
+   - Escape distance estimation using formula: `n + 1 - log(log(|z|)) / log(2)`
    - Eliminates color banding artifacts
-   - Applicable to both GPU and CPU modes
+   - Runtime toggle in UI, works with both GPU and CPU modes
+   - Critical SIMD bug fix: preserves magnitude at escape time
 
 10. **Perturbation theory**: Enable extreme zoom levels (> 1e15)
    - Use arbitrary precision + series approximation

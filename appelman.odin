@@ -32,7 +32,7 @@ main :: proc() {
 		needs_recompute     = true,
 		computation_time_ms = 0.0,
 		use_simd            = true, // Use SIMD by default
-		use_gpu             = false, // Use CPU by default
+		use_gpu             = true, // Use GPU by default
 		use_smooth_coloring = true, // Use smooth coloring by default
 		palette             = "Classic", // Default palette name
 		current_palette     = visual.DEFAULT_PALETTE, // Default palette data

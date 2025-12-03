@@ -93,19 +93,7 @@ compute_scalar_worker :: proc(t: ^thread.Thread) {
 				px[i] = base + i
 				x0[i] = f64(px[i]) / f64(width) * data.scale + data.offset_x
 				iterations, magnitude_sq := iterate(x0[i], y0, state.max_iterations)
-
-				color: u32
-				if state.use_smooth_coloring {
-					smooth_iter := calculate_smooth_iteration(iterations, magnitude_sq)
-					color = compute_color_smooth(
-						smooth_iter,
-						state.max_iterations,
-						state.current_palette,
-					)
-				} else {
-					color = compute_color(iterations, state.max_iterations, state.current_palette)
-				}
-
+				color := compute_pixel_color(iterations, magnitude_sq, state)
 				state.pixels[py * width + px[i]] = color
 			}
 		}
@@ -183,21 +171,7 @@ compute_simd_worker :: proc(t: ^thread.Thread) {
 			// Convert to colors and store
 			for i in 0 ..< SIMD_WIDTH {
 				px := base + i
-				color: u32
-				if state.use_smooth_coloring {
-					smooth_iter := calculate_smooth_iteration(iterations[i], magnitudes[i])
-					color = compute_color_smooth(
-						smooth_iter,
-						state.max_iterations,
-						state.current_palette,
-					)
-				} else {
-					color = compute_color(
-						iterations[i],
-						state.max_iterations,
-						state.current_palette,
-					)
-				}
+				color := compute_pixel_color(iterations[i], magnitudes[i], state)
 				state.pixels[py * width + px] = color
 			}
 		}
@@ -225,6 +199,7 @@ iterate_simd :: proc(
 	active := one_uint
 
 	magnitude_sq := simd.f64x4{0, 0, 0, 0}
+	escape_magnitude_sq := simd.f64x4{0, 0, 0, 0}
 
 	for iter: u64 = 0; iter < max_iterations; iter += 1 {
 		// Mandelbrot iteration: z = z^2 + c
@@ -239,13 +214,15 @@ iterate_simd :: proc(
 
 		// Calculate magnitude squared (after updating z)
 		magnitude_sq = x * x + y * y
+
 		// Check if escaped: magnitude_sq > 4.0
-		// For SIMD, we need a binary result (0 or 1), not fractional
-		// If magnitude_sq <= 4.0, keep active (active = 1)
-		// If magnitude_sq > 4.0, deactivate (active = 0)
-		// Use: active = active * (magnitude_sq <= 4.0 ? 1.0 : 0.0)
-		// Simulate with: if (magnitude_sq - 4.0) > 0, then 0, else 1
 		not_escaped := simd.lanes_le(magnitude_sq, threshold)
+
+		// Preserve magnitude at escape time for smooth coloring
+		// Only update escape_magnitude_sq for lanes that just became inactive
+		active_mask := simd.lanes_ne(active, zero_uint)
+		escape_magnitude_sq = simd.select(active_mask, magnitude_sq, escape_magnitude_sq)
+
 		active = simd.select(not_escaped, active, zero_uint)
 
 		// Early exit if all lanes have escaped
@@ -256,7 +233,7 @@ iterate_simd :: proc(
 
 	// Convert to arrays
 	iterations := simd.to_array(iter_count)
-	magnitudes := simd.to_array(magnitude_sq)
+	magnitudes := simd.to_array(escape_magnitude_sq)
 
 	return iterations, magnitudes
 }
@@ -275,6 +252,26 @@ iterate :: proc(x0: f64, y0: f64, max_iterations: u64) -> (u64, f64) {
 		magnitude_sq = x * x + y * y
 	}
 	return iteration, magnitude_sq
+}
+
+// Compute pixel color from iteration count and magnitude
+compute_pixel_color :: proc(
+	iter: u64,
+	magnitude_sq: f64,
+	state: ^app.App_State,
+) -> u32 {
+	color: u32
+	if state.use_smooth_coloring {
+		smooth_iter := calculate_smooth_iteration(iter, magnitude_sq)
+		color = compute_color_smooth(
+			smooth_iter,
+			state.max_iterations,
+			state.current_palette,
+		)
+	} else {
+		color = compute_color(iter, state.max_iterations, state.current_palette)
+	}
+	return color
 }
 
 // Linear interpolation between two values

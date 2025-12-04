@@ -98,7 +98,7 @@ Implemented in `renderer/renderer.odin`, `shaders/mandelbrot.vert`, `shaders/man
 
 ### 3. Multi-Threading with Dynamic Load Balancing (8-way Task Parallelism)
 
-Implemented in `mandelbrot/mandelbrot.odin:10-180`
+Implemented in `mandelbrot/mandelbrot_scalar.odin` and `mandelbrot/mandelbrot_simd.odin`
 
 **Architecture**
 - Spawns 8 worker threads for parallel computation
@@ -108,13 +108,13 @@ Implemented in `mandelbrot/mandelbrot.odin:10-180`
 
 **Thread Management**
 
-1. **Work Queue Structure** (lines 16-20)
+1. **Work Queue Structure** (`mandelbrot.odin:11-15`)
    - `Work_Queue` struct with atomic counter for next row to process
    - `next_row`: Atomically incremented counter (accessed via `sync.atomic_add`)
    - `total_rows`: Total number of rows (constant, no synchronization needed)
    - Single shared work queue passed to all threads
 
-2. **Thread Data Structure** (lines 23-31)
+2. **Thread Data Structure** (`mandelbrot.odin:18-26`)
    - `Thread_Data` struct passes computation parameters to workers
    - Contains state pointer, dimensions, work queue pointer, and coordinate offsets
    - Each thread gets its own `Thread_Data` instance on the stack
@@ -128,8 +128,8 @@ Implemented in `mandelbrot/mandelbrot.odin:10-180`
    - Cleans up resources with `thread.destroy()`
 
 4. **Worker Functions**
-   - `compute_simd_worker` (lines 182-256): SIMD vectorized computation with work queue
-   - `compute_scalar_worker` (lines 81-142): Scalar computation with work queue
+   - `compute_simd_worker` (`mandelbrot_simd.odin`): SIMD vectorized computation with work queue
+   - `compute_scalar_worker` (`mandelbrot_scalar.odin`): Scalar computation with work queue
    - Each worker dynamically grabs rows using atomic operations
 
 **Memory Safety**
@@ -663,7 +663,9 @@ Toggle rendering modes in the UI to compare performance:
 │   ├── export.odin               # Image export functions (PNG encoding)
 │   └── history.odin              # Navigation history (back/forward)
 ├── mandelbrot/
-│   └── mandelbrot.odin           # CPU compute: SIMD and scalar implementations
+│   ├── mandelbrot.odin           # Public API: Compute entry point, shared types
+│   ├── mandelbrot_scalar.odin    # Scalar CPU implementation (8-way unrolled)
+│   └── mandelbrot_simd.odin      # SIMD CPU implementation (4-wide AVX vectorization)
 ├── renderer/
 │   ├── renderer.odin             # OpenGL renderer: shader loading, GPU/CPU rendering
 │   └── export.odin               # High-resolution image export computation

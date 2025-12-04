@@ -4,6 +4,7 @@ import app "../app"
 import visual "../visual"
 import "core:math"
 import "core:simd"
+import "core:sync"
 import "core:thread"
 
 // SIMD vector width - process 4 pixels at once with AVX
@@ -12,16 +13,21 @@ SIMD_WIDTH :: 4
 // Number of threads for parallel computation
 NUM_THREADS :: 8
 
+// Work queue for dynamic load balancing
+Work_Queue :: struct {
+	next_row:   int, // Atomic counter for next row to process
+	total_rows: int, // Total number of rows to process
+}
+
 // Thread data for passing parameters to worker threads
 Thread_Data :: struct {
-	state:     ^app.App_State,
-	width:     int,
-	height:    int,
-	row_start: int,
-	row_end:   int,
-	scale:     f64,
-	offset_x:  f64,
-	offset_y:  f64,
+	state:      ^app.App_State,
+	width:      int,
+	height:     int,
+	work_queue: ^Work_Queue, // Pointer to shared work queue
+	scale:      f64,
+	offset_x:   f64,
+	offset_y:   f64,
 }
 
 Compute :: proc(state: ^app.App_State, width: int, height: int) {
@@ -41,8 +47,8 @@ compute_scalar :: proc(state: ^app.App_State, width: int, height: int) {
 	offset_x := state.center_x - (1.75 / state.zoom)
 	offset_y := state.center_y - (1.0 / state.zoom)
 
-	// Calculate rows per thread
-	rows_per_thread := height / NUM_THREADS
+	// Initialize work queue for dynamic load balancing
+	work_queue := Work_Queue{next_row = 0, total_rows = height}
 
 	// Create threads and thread data
 	threads: [NUM_THREADS]^thread.Thread
@@ -51,14 +57,13 @@ compute_scalar :: proc(state: ^app.App_State, width: int, height: int) {
 	// Spawn threads
 	for i in 0 ..< NUM_THREADS {
 		thread_data[i] = Thread_Data {
-			state     = state,
-			width     = width,
-			height    = height,
-			row_start = i * rows_per_thread,
-			row_end   = (i + 1) * rows_per_thread,
-			scale     = scale,
-			offset_x  = offset_x,
-			offset_y  = offset_y,
+			state      = state,
+			width      = width,
+			height     = height,
+			work_queue = &work_queue,
+			scale      = scale,
+			offset_x   = offset_x,
+			offset_y   = offset_y,
 		}
 
 		threads[i] = thread.create(compute_scalar_worker)
@@ -73,13 +78,14 @@ compute_scalar :: proc(state: ^app.App_State, width: int, height: int) {
 	}
 }
 
-// Worker function for scalar computation on a range of rows
+// Worker function for scalar computation using dynamic work queue
 compute_scalar_worker :: proc(t: ^thread.Thread) {
 	N :: 8
 	data := (^Thread_Data)(t.data)
 	state := data.state
 	width := data.width
 	height := data.height
+	work_queue := data.work_queue
 
 	blocks := width / N
 	px: [N]int
@@ -92,7 +98,16 @@ compute_scalar_worker :: proc(t: ^thread.Thread) {
 	scale_x := 3.5 / state.zoom
 	scale_y := 2.0 / state.zoom
 
-	for py in data.row_start ..< data.row_end {
+	// Dynamically grab rows from the work queue
+	for {
+		// Atomically fetch the next row to process
+		py := sync.atomic_add(&work_queue.next_row, 1)
+
+		// Check if we've processed all rows
+		if py >= work_queue.total_rows {
+			break
+		}
+
 		// Convert to normalized coordinates
 		norm_y := f64(py) / f64(height) - 0.5
 
@@ -133,8 +148,8 @@ compute_simd :: proc(state: ^app.App_State, width: int, height: int) {
 	offset_x := state.center_x - (1.75 / state.zoom)
 	offset_y := state.center_y - (1.0 / state.zoom)
 
-	// Calculate rows per thread
-	rows_per_thread := height / NUM_THREADS
+	// Initialize work queue for dynamic load balancing
+	work_queue := Work_Queue{next_row = 0, total_rows = height}
 
 	// Create threads and thread data
 	threads: [NUM_THREADS]^thread.Thread
@@ -143,14 +158,13 @@ compute_simd :: proc(state: ^app.App_State, width: int, height: int) {
 	// Spawn threads
 	for i in 0 ..< NUM_THREADS {
 		thread_data[i] = Thread_Data {
-			state     = state,
-			width     = width,
-			height    = height,
-			row_start = i * rows_per_thread,
-			row_end   = (i + 1) * rows_per_thread,
-			scale     = scale,
-			offset_x  = offset_x,
-			offset_y  = offset_y,
+			state      = state,
+			width      = width,
+			height     = height,
+			work_queue = &work_queue,
+			scale      = scale,
+			offset_x   = offset_x,
+			offset_y   = offset_y,
 		}
 
 		threads[i] = thread.create(compute_simd_worker)
@@ -165,12 +179,13 @@ compute_simd :: proc(state: ^app.App_State, width: int, height: int) {
 	}
 }
 
-// Worker function for SIMD computation on a range of rows
+// Worker function for SIMD computation using dynamic work queue
 compute_simd_worker :: proc(t: ^thread.Thread) {
 	data := (^Thread_Data)(t.data)
 	state := data.state
 	width := data.width
 	height := data.height
+	work_queue := data.work_queue
 
 	blocks := width / SIMD_WIDTH
 
@@ -192,7 +207,16 @@ compute_simd_worker :: proc(t: ^thread.Thread) {
 	center_y_vec := simd.f64x4{state.center_y, state.center_y, state.center_y, state.center_y}
 	pixel_offsets := simd.f64x4{0, 1, 2, 3}
 
-	for py in data.row_start ..< data.row_end {
+	// Dynamically grab rows from the work queue
+	for {
+		// Atomically fetch the next row to process
+		py := sync.atomic_add(&work_queue.next_row, 1)
+
+		// Check if we've processed all rows
+		if py >= work_queue.total_rows {
+			break
+		}
+
 		// Convert y to normalized coordinates
 		py_vec := simd.f64x4{f64(py), f64(py), f64(py), f64(py)}
 		norm_y_vec := py_vec / height_vec - half

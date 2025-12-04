@@ -95,60 +95,77 @@ Implemented in `renderer/renderer.odin`, `shaders/mandelbrot.vert`, `shaders/man
 - Live switching between modes for performance comparison
 - Both modes produce visually identical output
 
-### 3. Multi-Threading (8-way Task Parallelism)
+### 3. Multi-Threading with Dynamic Load Balancing (8-way Task Parallelism)
 
-Implemented in `mandelbrot/mandelbrot.odin:10-132`
+Implemented in `mandelbrot/mandelbrot.odin:10-180`
 
 **Architecture**
 - Spawns 8 worker threads for parallel computation
-- Distributes rows evenly across threads using task parallelism
-- Each thread processes `height / NUM_THREADS` consecutive rows
-- No synchronization needed - threads write to disjoint memory regions
+- **Dynamic work queue** using atomic counter for row distribution
+- Each thread atomically fetches rows on-demand, ensuring optimal load balancing
+- No synchronization needed for pixel writes - threads write to disjoint memory regions
 
 **Thread Management**
 
-1. **Thread Data Structure** (lines 14-23)
-   - `Thread_Data` struct passes computation parameters to workers
-   - Contains state pointer, dimensions, row range, and coordinate offsets
-   - Each thread gets its own `Thread_Data` instance on the stack
+1. **Work Queue Structure** (lines 16-20)
+   - `Work_Queue` struct with atomic counter for next row to process
+   - `next_row`: Atomically incremented counter (accessed via `sync.atomic_add`)
+   - `total_rows`: Total number of rows (constant, no synchronization needed)
+   - Single shared work queue passed to all threads
 
-2. **Thread Lifecycle** (lines 73-95, 50-72)
+2. **Thread Data Structure** (lines 23-31)
+   - `Thread_Data` struct passes computation parameters to workers
+   - Contains state pointer, dimensions, work queue pointer, and coordinate offsets
+   - Each thread gets its own `Thread_Data` instance on the stack
+   - Shared `work_queue` pointer enables dynamic work distribution
+
+3. **Thread Lifecycle**
    - Main thread creates 8 worker threads with `thread.create()`
-   - Assigns row ranges: thread i processes rows `[i * rows_per_thread, (i+1) * rows_per_thread)`
+   - All threads share a single work queue (atomic counter)
    - Starts all threads simultaneously with `thread.start()`
    - Waits for completion with `thread.join()` before returning
    - Cleans up resources with `thread.destroy()`
 
-3. **Worker Functions**
-   - `compute_simd_worker` (lines 98-132): SIMD vectorized computation per thread
-   - `compute_scalar_worker` (lines 75-99): Scalar computation per thread
-   - Each worker independently processes its assigned rows
+4. **Worker Functions**
+   - `compute_simd_worker` (lines 182-256): SIMD vectorized computation with work queue
+   - `compute_scalar_worker` (lines 81-142): Scalar computation with work queue
+   - Each worker dynamically grabs rows using atomic operations
 
 **Memory Safety**
-- No race conditions: each thread writes to unique pixel indices `[row_start * width, row_end * width)`
+- No race conditions for pixel writes: each row claimed by only one thread via atomic counter
+- Atomic operations ensure each row index is fetched exactly once
 - Thread data arrays allocated on main thread's stack, valid until all threads complete
 - Read-only access to shared state (zoom, center, max_iterations)
 
-**Row Distribution Example** (600px height, 8 threads)
+**Dynamic Work Distribution** (600px height, 8 threads)
+Instead of static partitioning, threads dynamically claim rows:
 ```
-Thread 0: rows   0-74   (75 rows)
-Thread 1: rows  75-149  (75 rows)
-Thread 2: rows 150-224  (75 rows)
-Thread 3: rows 225-299  (75 rows)
-Thread 4: rows 300-374  (75 rows)
-Thread 5: rows 375-449  (75 rows)
-Thread 6: rows 450-524  (75 rows)
-Thread 7: rows 525-599  (75 rows)
+Work Queue: atomic counter starting at 0
+
+Thread A: claims row 0 (atomic_add returns 0)
+Thread B: claims row 1 (atomic_add returns 1)
+Thread C: claims row 2 (atomic_add returns 2)
+Thread D: claims row 3 (atomic_add returns 3)
+Thread E: claims row 4 (atomic_add returns 4)
+Thread F: claims row 5 (atomic_add returns 5)
+Thread G: claims row 6 (atomic_add returns 6)
+Thread H: claims row 7 (atomic_add returns 7)
+
+// When Thread A finishes row 0, it immediately claims the next available row
+Thread A: claims row 8 (atomic_add returns 8)
+// ... continues until all 600 rows are processed
 ```
 
-Each thread independently iterates through its assigned rows, computing all pixels in each row using either SIMD or scalar methods.
+Each thread loops, atomically fetching the next row index, processing it, and repeating until all rows are complete. This ensures optimal load balancing even when rows have varying computational complexity.
 
 **Performance Characteristics**
 - **~8x speedup** on 8-core CPUs (or more with hyperthreading)
 - Scales linearly with core count (assuming sufficient workload)
 - Combined with SIMD: **16-24x total speedup** over scalar single-threaded baseline
-- Optimal for resolutions where `height >= NUM_THREADS` (e.g., 600px height = 75 rows/thread)
-- Static partitioning means no dynamic overhead, but can cause load imbalance if some rows are significantly more complex than others
+- Optimal for resolutions where `height >= NUM_THREADS` (e.g., 600px height)
+- **Dynamic load balancing** eliminates thread idle time when rows have varying complexity
+- Atomic counter overhead is negligible (single instruction per row)
+- Particularly effective in high-contrast regions where some rows escape quickly and others require max iterations
 
 ### 4. External Palette System
 
@@ -682,10 +699,10 @@ Toggle rendering modes in the UI to compare performance:
 
 ### Threading Configuration
 - `NUM_THREADS :: 8` - spawns 8 worker threads for parallel computation
-- Each thread processes `height / 8` consecutive rows (e.g., 75 rows @ 600px height)
-- Thread distribution: static partitioning with no load balancing
+- **Dynamic work queue**: threads atomically claim rows on-demand using `core:sync` atomic operations
+- Thread distribution: atomic counter-based work queue ensures optimal load balancing
 - Memory model: each thread writes to disjoint pixel ranges (no locks required)
-- Uses Odin's `core:thread` package for cross-platform threading
+- Uses Odin's `core:thread` package for cross-platform threading and `core:sync` for atomic operations
 
 ### SIMD Vector Width
 - `SIMD_WIDTH :: 4` - processes 4 f64 values simultaneously
@@ -796,9 +813,10 @@ odin build . -debug -out:mandelbrodin
    - Tracks zoom, pan, and palette changes
    - Maximum 100 entries with auto-cleanup
 
-7. **Dynamic load balancing**: Use work-stealing queue instead of static row distribution (CPU mode)
-   - Reduces thread idle time when rows have varying complexity
-   - Potential 10-20% additional speedup in high-contrast regions
+7. ~~**Dynamic load balancing**: Use work queue instead of static row distribution (CPU mode)~~ ✓ **IMPLEMENTED**
+   - Atomic counter-based work queue for dynamic row distribution
+   - Eliminates thread idle time when rows have varying complexity
+   - Particularly effective in high-contrast regions (boundary between set and escape regions)
 
 8. **AVX-512**: Use 8-wide vectors on newer CPUs (2x over AVX2)
    - Double SIMD throughput: 8 pixels per vector instead of 4

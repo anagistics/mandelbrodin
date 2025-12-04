@@ -98,7 +98,8 @@ void main()
 {
     // Convert to normalized coordinates [-0.5, 0.5] centered at origin
     float norm_x = TexCoord.x - 0.5;
-    float norm_y = TexCoord.y - 0.5;
+    // Flip Y to match CPU coordinate system (top = -0.5, bottom = +0.5)
+    float norm_y = (1.0 - TexCoord.y) - 0.5;
 
     // Apply rotation
     float cos_r = cos(u_rotation);

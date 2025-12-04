@@ -54,9 +54,10 @@ Implemented in `renderer/renderer.odin`, `shaders/mandelbrot.vert`, `shaders/man
 
 2. **Coordinate System Handling**
    - Y-coordinate flip to convert OpenGL texture coords (origin bottom-left) to screen coords (origin top-left)
-   - Formula: `y0 = (1.0 - TexCoord.y) * (2.0 / u_zoom) + offset_y`
-   - Ensures GPU and CPU modes produce identical results
-   - Matches CPU implementation's coordinate transformation
+   - Formula: `norm_y = (1.0 - TexCoord.y) - 0.5`
+   - This ensures top of screen has norm_y = -0.5, matching CPU coordinate system
+   - Critical for rotation: ensures GPU and CPU modes produce identical results
+   - Without this flip, rotated images would appear mirrored between modes
 
 3. **Palette System**
    - Gradient palettes passed as uniform arrays to shader

@@ -15,7 +15,10 @@ compute_simd :: proc(state: ^app.App_State, width: int, height: int) {
 	offset_y := state.center_y - (1.0 / state.zoom)
 
 	// Initialize work queue for dynamic load balancing
-	work_queue := Work_Queue{next_row = 0, total_rows = height}
+	work_queue := Work_Queue {
+		next_row   = 0,
+		total_rows = height,
+	}
 
 	// Create threads and thread data
 	threads: [NUM_THREADS]^thread.Thread
@@ -122,7 +125,14 @@ compute_simd_worker :: proc(t: ^thread.Thread) {
 }
 
 // SIMD iteration - processes 4 pixels at once
-iterate_simd :: proc(x0_vec: simd.f64x4, y0_vec: simd.f64x4, max_iterations: u64) -> ([4]u64, [4]f64) {
+iterate_simd :: proc(
+	x0_vec: simd.f64x4,
+	y0_vec: simd.f64x4,
+	max_iterations: u64,
+) -> (
+	[4]u64,
+	[4]f64,
+) {
 	x := simd.f64x4{0, 0, 0, 0}
 	y := simd.f64x4{0, 0, 0, 0}
 	threshold := simd.f64x4{4.0, 4.0, 4.0, 4.0}

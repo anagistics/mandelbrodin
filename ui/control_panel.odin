@@ -218,26 +218,6 @@ Render_control_panel_content :: proc(state: ^app.App_State, width: int, height: 
 		state.needs_recompute = true
 	}
 
-	// Mouse controls info
-	imgui.Separator()
-	imgui.Text("Mouse Controls")
-	imgui.BulletText("Left Click: Recenter")
-	imgui.BulletText("Right Drag: Pan view")
-	imgui.BulletText("Mouse Wheel: Zoom")
-	imgui.BulletText("Ctrl+Wheel: Rotate")
-	imgui.BulletText("Shift+Drag: Box zoom")
-
-	// Keyboard controls info
-	imgui.Separator()
-	imgui.Text("Keyboard Controls")
-	imgui.BulletText("Backspace: History back")
-	imgui.BulletText("Shift+Backspace: History forward")
-
-	// Info
-	imgui.Separator()
-	imgui.TextWrapped(
-		"Use mouse to navigate or adjust sliders below. Try preset locations for interesting areas.",
-	)
 }
 
 // Render control panel with its own window (for standalone use)

@@ -12,19 +12,31 @@ Render_tabbed_panel :: proc(state: ^app.App_State, x_offset: int, width: int, he
 		// Create tab bar
 		if imgui.BeginTabBar("MainTabs", {}) {
 			// Controls tab
-			if imgui.BeginTabItem("Controls", nil, {}) {
+			tab_flags: imgui.TabItemFlags = state.active_tab == 0 ? {.SetSelected} : {}
+			if imgui.BeginTabItem("Controls", nil, tab_flags) {
+				if state.active_tab == 0 {
+					state.active_tab = -1 // Clear the flag after it's been used
+				}
 				Render_control_panel_content(state, width, height)
 				imgui.EndTabItem()
 			}
 
 			// Bookmarks tab
-			if imgui.BeginTabItem("Bookmarks", nil, {}) {
+			tab_flags = state.active_tab == 1 ? {.SetSelected} : {}
+			if imgui.BeginTabItem("Bookmarks", nil, tab_flags) {
+				if state.active_tab == 1 {
+					state.active_tab = -1 // Clear the flag after it's been used
+				}
 				Render_bookmarks_panel_content(state, width, height)
 				imgui.EndTabItem()
 			}
 
 			// Export tab
-			if imgui.BeginTabItem("Export", nil, {}) {
+			tab_flags = state.active_tab == 2 ? {.SetSelected} : {}
+			if imgui.BeginTabItem("Export", nil, tab_flags) {
+				if state.active_tab == 2 {
+					state.active_tab = -1 // Clear the flag after it's been used
+				}
 				Render_export_panel_content(state, width, height)
 				imgui.EndTabItem()
 			}

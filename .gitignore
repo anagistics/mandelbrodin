@@ -24,3 +24,7 @@ palettes/*
 
 # Ignore executable
 mandelbrodin
+
+# Ignore images
+*.png
+

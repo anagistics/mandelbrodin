@@ -3,6 +3,7 @@ package main
 import "core:fmt"
 import "core:math"
 import "core:mem"
+import "core:strings"
 import "core:time"
 import gl "vendor:OpenGL"
 import imgui "vendor:imgui"
@@ -76,6 +77,8 @@ main :: proc() {
 		export_filename     = "mandelbrot_export", // Default export filename
 		export_in_progress  = false,
 		export_progress     = 0.0,
+		active_tab          = 0, // Default to Controls tab
+		show_help           = false, // Help overlay hidden by default
 	}
 	defer delete(state.pixels)
 	defer delete(state.history)
@@ -106,6 +109,9 @@ main :: proc() {
 		return
 	}
 	defer SDL.DestroyWindow(window)
+
+	// Raise and focus the window to ensure keyboard input works from the start
+	SDL.RaiseWindow(window)
 
 	gl_context := SDL.GL_CreateContext(window)
 	if gl_context == nil {
@@ -172,22 +178,146 @@ main :: proc() {
 			case .QUIT:
 				running = false
 			case .KEYDOWN:
-				// Only handle keyboard shortcuts if ImGui doesn't want keyboard input
-				// (i.e., user is not typing in a text field)
-				if !io.WantCaptureKeyboard {
-					if event.key.keysym.sym == .ESCAPE {
-						running = false
-					} else if event.key.keysym.sym == .BACKSPACE {
-						// Check if shift is held for forward navigation
-						keyboard_state := SDL.GetKeyboardState(nil)
-						if keyboard_state[SDL.Scancode.LSHIFT] == 1 ||
-						   keyboard_state[SDL.Scancode.RSHIFT] == 1 {
-							// Shift+Backspace: Forward
-							app.history_forward(&state)
-						} else {
-							// Backspace: Back
-							app.history_back(&state)
+				mod_state := SDL.GetModState()
+				ctrl_pressed := (mod_state & SDL.KMOD_CTRL) != SDL.Keymod{}
+				shift_pressed := (mod_state & SDL.KMOD_SHIFT) != SDL.Keymod{}
+				alt_pressed := (mod_state & SDL.KMOD_ALT) != SDL.Keymod{}
+				key := event.key.keysym.sym
+
+				// Handle global shortcuts regardless of ImGui keyboard capture
+				// (These should work even when ImGui navigation is active)
+				handled := false
+
+				// F1 for help (global shortcut)
+				if key == .F1 {
+					state.show_help = !state.show_help
+					handled = true
+				}
+
+				// Ctrl+1/2/3 for tab switching (global shortcuts)
+				if !handled && ctrl_pressed && (key == .NUM1 || key == .KP_1) {
+					state.active_tab = 0 // Controls tab
+					handled = true
+				}
+				if !handled && ctrl_pressed && (key == .NUM2 || key == .KP_2) {
+					state.active_tab = 1 // Bookmarks tab
+					handled = true
+				}
+				if !handled && ctrl_pressed && (key == .NUM3 || key == .KP_3) {
+					state.active_tab = 2 // Export tab
+					handled = true
+				}
+
+				// Ctrl+S for quick export (global shortcut)
+				if !handled && ctrl_pressed && key == .S {
+					if len(state.export_filename) > 0 {
+						output_filename := state.export_filename
+						if !strings.has_suffix(output_filename, ".png") {
+							output_filename = fmt.tprintf("%s.png", output_filename)
 						}
+
+						resolution := app.EXPORT_RESOLUTIONS[state.export_resolution]
+						state.export_in_progress = true
+
+						success := renderer.export_image(
+							&state,
+							resolution.width,
+							resolution.height,
+							output_filename,
+						)
+
+						state.export_in_progress = false
+					}
+					handled = true
+				}
+
+				// Alt+Left/Right for history navigation (global shortcuts)
+				if !handled && alt_pressed && key == .LEFT {
+					app.history_back(&state)
+					handled = true
+				}
+				if !handled && alt_pressed && key == .RIGHT {
+					app.history_forward(&state)
+					handled = true
+				}
+
+				// ESC to quit (global shortcut)
+				if !handled && key == .ESCAPE {
+					running = false
+					handled = true
+				}
+
+				// Navigation shortcuts - work unless user is typing in a text field
+				// These should work even when ImGui keyboard navigation is active
+				if !handled && !io.WantTextInput {
+					// Arrow keys for panning
+					if key == .LEFT || key == .RIGHT || key == .UP || key == .DOWN {
+						app.history_save(&state)
+
+						// Pan distance: normal or faster with Shift
+						pan_distance := shift_pressed ? 0.1 : 0.05
+						scale_x := 3.5 / state.zoom
+						scale_y := 2.0 / state.zoom
+
+						// Apply rotation to pan direction
+						cos_r := math.cos(state.rotation)
+						sin_r := math.sin(state.rotation)
+
+						dx, dy: f64 = 0, 0
+						if key == .LEFT {
+							dx = -pan_distance
+						} else if key == .RIGHT {
+							dx = pan_distance
+						} else if key == .UP {
+							dy = -pan_distance
+						} else if key == .DOWN {
+							dy = pan_distance
+						}
+
+						// Rotate the pan direction
+						rotated_dx := dx * cos_r - dy * sin_r
+						rotated_dy := dx * sin_r + dy * cos_r
+
+						state.center_x += rotated_dx * scale_x
+						state.center_y += rotated_dy * scale_y
+						state.needs_recompute = true
+						handled = true
+					}
+
+					// PgUp and PgDown for zooming
+					if key == .PAGEUP {
+						app.history_save(&state)
+						state.zoom *= 1.5
+						state.needs_recompute = true
+						handled = true
+					}
+					if key == .PAGEDOWN {
+						app.history_save(&state)
+						state.zoom /= 1.5
+						state.needs_recompute = true
+						handled = true
+					}
+
+					// , and . keys for rotation
+					if key == .COMMA {
+						app.history_save(&state)
+						state.rotation += math.to_radians(f64(5.0))
+						state.rotation = math.mod(state.rotation, 2.0 * math.PI)
+						if state.rotation < 0 {
+							state.rotation += 2.0 * math.PI
+						}
+						state.needs_recompute = true
+						handled = true
+					}
+					if key == .PERIOD {
+						app.history_save(&state)
+						state.rotation -= math.to_radians(f64(5.0))
+						state.rotation = math.mod(state.rotation, 2.0 * math.PI)
+						if state.rotation < 0 {
+							state.rotation += 2.0 * math.PI
+						}
+						state.needs_recompute = true
+						handled = true
 					}
 				}
 
@@ -429,6 +559,11 @@ main :: proc() {
 
 		// ImGui Tabbed Panel
 		ui.Render_tabbed_panel(&state, WIDTH, PANEL_WIDTH, HEIGHT)
+
+		// Help overlay
+		if state.show_help {
+			ui.Render_help_overlay(&state)
+		}
 
 		// Render ImGui
 		imgui.Render()

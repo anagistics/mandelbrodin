@@ -65,4 +65,7 @@ App_State :: struct {
 	export_filename:     string, // Export filename
 	export_in_progress:  bool, // Flag indicating export is running
 	export_progress:     f32, // Export progress 0.0 to 1.0
+	// UI state
+	active_tab:          int, // Currently active tab (0=Controls, 1=Bookmarks, 2=Export)
+	show_help:           bool, // Toggle help overlay display
 }

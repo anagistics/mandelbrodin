@@ -7,7 +7,7 @@ import "core:strings"
 import imgui "vendor:imgui"
 
 // Render just the content of the export panel (for use in tabs)
-Render_export_panel_content :: proc(state: ^app.App_State, width: int, height: int) {
+Render_export_panel_content :: proc(r: ^renderer.Renderer, state: ^app.App_State, width: int, height: int) {
 imgui.Text("Export High Resolution")
 	imgui.Separator()
 
@@ -95,8 +95,8 @@ imgui.Text("Export High Resolution")
 			resolution := app.EXPORT_RESOLUTIONS[state.export_resolution]
 			state.export_in_progress = true
 
-			// Export using renderer module
-			success := renderer.export_image(state, resolution.width, resolution.height, output_filename)
+			// Export using GPU compute shader (falls back to CPU if unavailable)
+			success := renderer.export_image_compute(r, state, resolution.width, resolution.height, output_filename)
 
 			state.export_in_progress = false
 		}
@@ -117,17 +117,17 @@ imgui.Text("Export High Resolution")
 	imgui.TextWrapped("Export renders the current view at high resolution and saves to PNG format. Higher resolutions take longer to compute.")
 
 	imgui.Separator()
-	imgui.TextDisabled("Note: Export uses CPU rendering")
+	imgui.TextDisabled("Note: Export uses GPU compute shader (or CPU fallback)")
 }
 
 // Render export panel with its own window (for standalone use)
-Render_export_panel :: proc(state: ^app.App_State, x_offset: int, y_offset: int, width: int, height: int) {
+Render_export_panel :: proc(r: ^renderer.Renderer, state: ^app.App_State, x_offset: int, y_offset: int, width: int, height: int) {
 	imgui.SetNextWindowPos(imgui.Vec2{f32(x_offset), f32(y_offset)}, .Once)
 	imgui.SetNextWindowSize(imgui.Vec2{f32(width), f32(height) - 20}, .Once)
 
 	flags := imgui.WindowFlags{.NoCollapse, .NoMove}
 	if imgui.Begin("Export Image", nil, flags) {
-		Render_export_panel_content(state, width, height)
+		Render_export_panel_content(r, state, width, height)
 	}
 	imgui.End()
 }

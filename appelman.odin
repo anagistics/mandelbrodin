@@ -91,9 +91,13 @@ main :: proc() {
 	}
 	defer SDL.Quit()
 
-	// Set OpenGL attributes
-	SDL.GL_SetAttribute(.CONTEXT_MAJOR_VERSION, 3)
-	SDL.GL_SetAttribute(.CONTEXT_MINOR_VERSION, 3)
+	// Try to create OpenGL 4.3 context first (for compute shaders)
+	// If that fails, fallback to 3.3 (fragment shaders only)
+	opengl_major: i32 = 4
+	opengl_minor: i32 = 3
+
+	SDL.GL_SetAttribute(.CONTEXT_MAJOR_VERSION, opengl_major)
+	SDL.GL_SetAttribute(.CONTEXT_MINOR_VERSION, opengl_minor)
 	SDL.GL_SetAttribute(.CONTEXT_PROFILE_MASK, i32(SDL.GLprofile.CORE))
 
 	window := SDL.CreateWindow(
@@ -115,13 +119,32 @@ main :: proc() {
 
 	gl_context := SDL.GL_CreateContext(window)
 	if gl_context == nil {
-		fmt.eprintln("SDL_GL_CreateContext Error:", SDL.GetError())
-		return
+		// OpenGL 4.3 failed, try fallback to 3.3
+		fmt.println("Failed to create OpenGL 4.3 context, trying 3.3...")
+		opengl_major = 3
+		opengl_minor = 3
+
+		SDL.GL_SetAttribute(.CONTEXT_MAJOR_VERSION, opengl_major)
+		SDL.GL_SetAttribute(.CONTEXT_MINOR_VERSION, opengl_minor)
+
+		gl_context = SDL.GL_CreateContext(window)
+		if gl_context == nil {
+			fmt.eprintln("SDL_GL_CreateContext Error:", SDL.GetError())
+			return
+		}
 	}
 	defer SDL.GL_DeleteContext(gl_context)
 
-	// Load OpenGL functions
-	gl.load_up_to(3, 3, SDL.gl_set_proc_address)
+	// Load OpenGL functions for the version we got
+	gl.load_up_to(int(opengl_major), int(opengl_minor), SDL.gl_set_proc_address)
+
+	// Log OpenGL version information
+	gl_version := gl.GetString(gl.VERSION)
+	gl_renderer := gl.GetString(gl.RENDERER)
+	gl_glsl_version := gl.GetString(gl.SHADING_LANGUAGE_VERSION)
+	fmt.printf("OpenGL Version: %s\n", gl_version)
+	fmt.printf("Renderer: %s\n", gl_renderer)
+	fmt.printf("GLSL Version: %s\n", gl_glsl_version)
 
 	// Enable vsync
 	SDL.GL_SetSwapInterval(1)
@@ -137,7 +160,12 @@ main :: proc() {
 	imgui_sdl2.InitForOpenGL(window, gl_context)
 	defer imgui_sdl2.Shutdown()
 
-	imgui_opengl3.Init("#version 330")
+	// Use appropriate GLSL version for ImGui
+	glsl_version_string: cstring = "#version 330"
+	if opengl_major >= 4 {
+		glsl_version_string = "#version 430"
+	}
+	imgui_opengl3.Init(glsl_version_string)
 	defer imgui_opengl3.Shutdown()
 
 	imgui.StyleColorsDark(nil)
@@ -149,6 +177,9 @@ main :: proc() {
 		return
 	}
 	defer renderer.Destroy(&render_context)
+
+	// Initialize compute shader (for high-res exports)
+	renderer.Init_Compute_Shader(&render_context)
 
 	// Load palettes
 	state.palettes = visual.load_palettes(state.palettes_dir)
@@ -219,7 +250,8 @@ main :: proc() {
 						resolution := app.EXPORT_RESOLUTIONS[state.export_resolution]
 						state.export_in_progress = true
 
-						success := renderer.export_image(
+						success := renderer.export_image_compute(
+							&render_context,
 							&state,
 							resolution.width,
 							resolution.height,
@@ -558,7 +590,7 @@ main :: proc() {
 		}
 
 		// ImGui Tabbed Panel
-		ui.Render_tabbed_panel(&state, WIDTH, PANEL_WIDTH, HEIGHT)
+		ui.Render_tabbed_panel(&render_context, &state, WIDTH, PANEL_WIDTH, HEIGHT)
 
 		// Help overlay
 		if state.show_help {

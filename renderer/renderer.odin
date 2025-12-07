@@ -24,6 +24,19 @@ Renderer :: struct {
 	u_num_stops:            i32,
 	u_stop_positions:       i32,
 	u_stop_colors:          i32,
+	// Compute shader support
+	compute_program:        u32,
+	compute_available:      bool,
+	// Uniform locations for compute shader
+	c_center:               i32,
+	c_zoom:                 i32,
+	c_rotation:             i32,
+	c_max_iterations:       i32,
+	c_use_smooth_coloring:  i32,
+	c_dimensions:           i32,
+	c_num_stops:            i32,
+	c_stop_positions:       i32,
+	c_stop_colors:          i32,
 }
 
 // Load shader from file
@@ -89,6 +102,72 @@ create_program :: proc(vert_path: string, frag_path: string) -> (u32, bool) {
 	}
 
 	return program, true
+}
+
+// Create compute shader program
+create_compute_program :: proc(comp_path: string) -> (u32, bool) {
+	comp_shader, comp_ok := load_shader(comp_path, gl.COMPUTE_SHADER)
+	if !comp_ok {
+		return 0, false
+	}
+	defer gl.DeleteShader(comp_shader)
+
+	program := gl.CreateProgram()
+	gl.AttachShader(program, comp_shader)
+	gl.LinkProgram(program)
+
+	// Check linking
+	success: i32
+	gl.GetProgramiv(program, gl.LINK_STATUS, &success)
+	if success == 0 {
+		info_log: [512]u8
+		gl.GetProgramInfoLog(program, 512, nil, raw_data(info_log[:]))
+		fmt.eprintln("Compute program linking failed")
+		fmt.eprintln(string(info_log[:]))
+		return 0, false
+	}
+
+	return program, true
+}
+
+// Initialize compute shader support
+Init_Compute_Shader :: proc(r: ^Renderer) -> bool {
+	// Check if compute shaders are supported (OpenGL 4.3+)
+	major, minor: i32
+	gl.GetIntegerv(gl.MAJOR_VERSION, &major)
+	gl.GetIntegerv(gl.MINOR_VERSION, &minor)
+
+	version := major * 10 + minor
+	if version < 43 {
+		fmt.printf("OpenGL %d.%d < 4.3, compute shaders not available\n", major, minor)
+		r.compute_available = false
+		return false
+	}
+
+	// Load compute shader
+	compute_program, compute_ok := create_compute_program("shaders/mandelbrot_compute.glsl")
+	if !compute_ok {
+		fmt.eprintln("Failed to load compute shader, exports will use CPU")
+		r.compute_available = false
+		return false
+	}
+	r.compute_program = compute_program
+
+	// Get uniform locations for compute shader
+	gl.UseProgram(r.compute_program)
+	r.c_center = gl.GetUniformLocation(r.compute_program, "u_center")
+	r.c_zoom = gl.GetUniformLocation(r.compute_program, "u_zoom")
+	r.c_rotation = gl.GetUniformLocation(r.compute_program, "u_rotation")
+	r.c_max_iterations = gl.GetUniformLocation(r.compute_program, "u_max_iterations")
+	r.c_use_smooth_coloring = gl.GetUniformLocation(r.compute_program, "u_use_smooth_coloring")
+	r.c_dimensions = gl.GetUniformLocation(r.compute_program, "u_dimensions")
+	r.c_num_stops = gl.GetUniformLocation(r.compute_program, "u_num_stops")
+	r.c_stop_positions = gl.GetUniformLocation(r.compute_program, "u_stop_positions")
+	r.c_stop_colors = gl.GetUniformLocation(r.compute_program, "u_stop_colors")
+
+	r.compute_available = true
+	fmt.println("✓ Compute shader initialized successfully")
+	return true
 }
 
 // Initialize renderer

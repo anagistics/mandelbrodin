@@ -1,9 +1,10 @@
 package ui
 
 import app "../app"
+import renderer "../renderer"
 import imgui "vendor:imgui"
 
-Render_tabbed_panel :: proc(state: ^app.App_State, x_offset: int, width: int, height: int) {
+Render_tabbed_panel :: proc(r: ^renderer.Renderer, state: ^app.App_State, x_offset: int, width: int, height: int) {
 	imgui.SetNextWindowPos(imgui.Vec2{f32(x_offset), 0}, .Once)
 	imgui.SetNextWindowSize(imgui.Vec2{f32(width), f32(height) - 20}, .Once)
 
@@ -37,7 +38,7 @@ Render_tabbed_panel :: proc(state: ^app.App_State, x_offset: int, width: int, he
 				if state.active_tab == 2 {
 					state.active_tab = -1 // Clear the flag after it's been used
 				}
-				Render_export_panel_content(state, width, height)
+				Render_export_panel_content(r, state, width, height)
 				imgui.EndTabItem()
 			}
 

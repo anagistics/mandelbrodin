@@ -27,58 +27,59 @@ imgui.Text("Bookmarks")
 	imgui.Text(fmt.ctprintf("Bookmarks: %d", len(state.bookmarks)))
 	imgui.Separator()
 
-	// Display bookmarks
-	for bookmark, i in state.bookmarks {
-		is_selected := state.selected_bookmark == i
-		is_editing := state.editing_bookmark == i
-		display_name := bookmark.view.name if len(bookmark.view.name) > 0 else bookmark.filename
+	// Calculate height for scrollable region
+	// Reserve space for preview section if a bookmark is selected
+	preview_height: f32 = 0
+	if state.selected_bookmark >= 0 && state.selected_bookmark < len(state.bookmarks) {
+		preview_height = 140 // Approximate height for preview section
+	}
 
-		if is_editing {
-			// Show input field for editing
-			imgui.SetKeyboardFocusHere()
+	// Get available height and reserve space for preview
+	available_height := imgui.GetContentRegionAvail().y - preview_height
 
-			flags := imgui.InputTextFlags{.EnterReturnsTrue}
-			if imgui.InputText(fmt.ctprintf("##edit_%d", i), cstring(raw_data(state.edit_buffer[:])), len(state.edit_buffer), flags) {
-				// Enter pressed - save the new name
-				new_name := strings.clone_from_cstring(cstring(raw_data(state.edit_buffer[:])))
-				app.update_bookmark_name(state, i, new_name)
-				delete(new_name)
-				state.editing_bookmark = -1
-			}
+	// Create scrollable child window for bookmarks list
+	if imgui.BeginChild("BookmarksList", imgui.Vec2{0, available_height}, {.Borders}, {}) {
+		// Display bookmarks
+		for bookmark, i in state.bookmarks {
+			is_selected := state.selected_bookmark == i
+			is_editing := state.editing_bookmark == i
+			display_name := bookmark.view.name if len(bookmark.view.name) > 0 else bookmark.filename
 
-			// Check if Escape was pressed to cancel
-			if imgui.IsKeyPressed(.Escape) {
-				state.editing_bookmark = -1
-			}
+			if is_editing {
+				// Show input field for editing
+				imgui.SetKeyboardFocusHere()
 
-			// Cancel editing if clicked outside
-			if !imgui.IsItemActive() && state.editing_bookmark == i {
-				// Wait one frame before canceling to allow Enter to work
-				if imgui.IsMouseClicked(.Left) {
+				flags := imgui.InputTextFlags{.EnterReturnsTrue}
+				if imgui.InputText(fmt.ctprintf("##edit_%d", i), cstring(raw_data(state.edit_buffer[:])), len(state.edit_buffer), flags) {
+					// Enter pressed - save the new name
+					new_name := strings.clone_from_cstring(cstring(raw_data(state.edit_buffer[:])))
+					app.update_bookmark_name(state, i, new_name)
+					delete(new_name)
 					state.editing_bookmark = -1
 				}
-			}
-		} else {
-			// Normal selectable item
-			if imgui.Selectable(fmt.ctprintf("%s##%d", display_name, i), is_selected) {
-				state.selected_bookmark = i
-				app.apply_view(state, bookmark.view)
-				app.history_save(state)
-			}
 
-			// Detect double-click to enter edit mode
-			if imgui.IsItemHovered() && imgui.IsMouseDoubleClicked(.Left) {
-				state.editing_bookmark = i
-				// Copy current name to edit buffer
-				name_bytes := transmute([]u8)display_name
-				copy_len := min(len(name_bytes), len(state.edit_buffer) - 1)
-				copy(state.edit_buffer[:], name_bytes[:copy_len])
-				state.edit_buffer[copy_len] = 0 // Null terminate
-			}
+				// Check if Escape was pressed to cancel
+				if imgui.IsKeyPressed(.Escape) {
+					state.editing_bookmark = -1
+				}
 
-			// Right-click context menu
-			if imgui.BeginPopupContextItem(fmt.ctprintf("bookmark_ctx_%d", i)) {
-				if imgui.MenuItem("Rename") {
+				// Cancel editing if clicked outside
+				if !imgui.IsItemActive() && state.editing_bookmark == i {
+					// Wait one frame before canceling to allow Enter to work
+					if imgui.IsMouseClicked(.Left) {
+						state.editing_bookmark = -1
+					}
+				}
+			} else {
+				// Normal selectable item
+				if imgui.Selectable(fmt.ctprintf("%s##%d", display_name, i), is_selected) {
+					state.selected_bookmark = i
+					app.apply_view(state, bookmark.view)
+					app.history_save(state)
+				}
+
+				// Detect double-click to enter edit mode
+				if imgui.IsItemHovered() && imgui.IsMouseDoubleClicked(.Left) {
 					state.editing_bookmark = i
 					// Copy current name to edit buffer
 					name_bytes := transmute([]u8)display_name
@@ -86,14 +87,27 @@ imgui.Text("Bookmarks")
 					copy(state.edit_buffer[:], name_bytes[:copy_len])
 					state.edit_buffer[copy_len] = 0 // Null terminate
 				}
-				if imgui.MenuItem("Delete") {
-					app.delete_bookmark(state, i)
-					state.selected_bookmark = -1
+
+				// Right-click context menu
+				if imgui.BeginPopupContextItem(fmt.ctprintf("bookmark_ctx_%d", i)) {
+					if imgui.MenuItem("Rename") {
+						state.editing_bookmark = i
+						// Copy current name to edit buffer
+						name_bytes := transmute([]u8)display_name
+						copy_len := min(len(name_bytes), len(state.edit_buffer) - 1)
+						copy(state.edit_buffer[:], name_bytes[:copy_len])
+						state.edit_buffer[copy_len] = 0 // Null terminate
+					}
+					if imgui.MenuItem("Delete") {
+						app.delete_bookmark(state, i)
+						state.selected_bookmark = -1
+					}
+					imgui.EndPopup()
 				}
-				imgui.EndPopup()
 			}
 		}
 	}
+	imgui.EndChild()
 
 	// Preview of selected bookmark
 	if state.selected_bookmark >= 0 && state.selected_bookmark < len(state.bookmarks) {

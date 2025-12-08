@@ -49,6 +49,48 @@ Render_control_panel_content :: proc(state: ^app.App_State, width: int, height: 
 
 	imgui.Separator()
 
+	// 2D/3D render mode toggle
+	imgui.Text("Render Mode")
+	mode_2d := state.render_mode == .Mode_2D
+	if imgui.RadioButton("2D (Flat)", mode_2d) {
+		state.render_mode = .Mode_2D
+		state.needs_recompute = true
+	}
+	imgui.SameLine(0, -1)
+	if imgui.RadioButton("3D (Columns)", !mode_2d) {
+		state.render_mode = .Mode_3D
+		// Force recompute to ensure pixel data is available for 3D height extraction
+		state.needs_recompute = true
+	}
+
+	// 3D settings (only show when in 3D mode)
+	if state.render_mode == .Mode_3D {
+		imgui.Indent(16)
+
+		// Height scale slider
+		if imgui.SliderFloat("Height Scale", &state.height_scale_3d, 0.1, 10.0, "%.2f", {}) {
+			// No action needed, value is updated directly
+		}
+		if imgui.IsItemHovered() {
+			imgui.SetTooltip("Multiplier for column heights")
+		}
+
+		// Column width slider
+		if imgui.SliderFloat("Column Width", &state.column_width_3d, 0.1, 1.0, "%.2f", {}) {
+			// No action needed, value is updated directly
+		}
+		if imgui.IsItemHovered() {
+			imgui.SetTooltip("Width of 3D columns (1.0 = adjacent, <1.0 = gaps)")
+		}
+
+		// Camera controls hint
+		imgui.TextWrapped("Camera: Left drag = rotate, Right drag = pan, Wheel = zoom, Arrows = rotate, R = reset")
+
+		imgui.Unindent(16)
+	}
+
+	imgui.Separator()
+
 	// Palette selection
 	imgui.Text("Color Palette")
 	if len(state.palettes) > 0 {

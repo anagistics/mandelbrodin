@@ -37,6 +37,9 @@ Renderer :: struct {
 	c_num_stops:            i32,
 	c_stop_positions:       i32,
 	c_stop_colors:          i32,
+	// 3D rendering
+	renderer_3d:            Renderer_3D,
+	renderer_3d_available:  bool,
 }
 
 // Load shader from file
@@ -244,6 +247,16 @@ Init :: proc(r: ^Renderer, width: int, height: int) -> bool {
 	// Use BGRA to match CPU color packing (0xAARRGGBB in little-endian = [BB,GG,RR,AA] bytes)
 	gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, i32(width), i32(height), 0, gl.BGRA, gl.UNSIGNED_BYTE, nil)
 
+	// Initialize 3D renderer
+	aspect := f32(width) / f32(height)
+	if Init_3D(&r.renderer_3d, aspect, width, height) {
+		r.renderer_3d_available = true
+		fmt.println("✓ 3D renderer available")
+	} else {
+		r.renderer_3d_available = false
+		fmt.println("⚠ 3D renderer not available, 3D mode disabled")
+	}
+
 	return true
 }
 
@@ -299,6 +312,60 @@ Render_CPU :: proc(r: ^Renderer, pixels: []u32, width: int, height: int) {
 	gl.BindVertexArray(0)
 }
 
+// Render using 3D columns
+Render_3D :: proc(r: ^Renderer, state: ^app.App_State, width: int, height: int) {
+	if !r.renderer_3d_available {
+		return
+	}
+
+	// Create instance data from pixels
+	instances := make([dynamic]Column_Instance, 0, width * height)
+	defer delete(instances)
+
+	for y in 0 ..< height {
+		for x in 0 ..< width {
+			idx := y * width + x
+
+			// Get pixel color
+			pixel := state.pixels[idx]
+
+			// Extract RGB components (pixel format is 0xAARRGGBB)
+			r_u8 := u8((pixel >> 16) & 0xFF)
+			g_u8 := u8((pixel >> 8) & 0xFF)
+			b_u8 := u8(pixel & 0xFF)
+
+			// Convert to float colors
+			color := [3]f32{f32(r_u8) / 255.0, f32(g_u8) / 255.0, f32(b_u8) / 255.0}
+
+			// Estimate height from brightness (temporary approximation)
+			// TODO: Store actual iteration count for accurate height
+			brightness := (color.r + color.g + color.b) / 3.0
+			height_value := brightness
+
+			// Skip very low columns (likely in the set, black pixels)
+			if height_value < 0.01 {
+				height_value = 0.01
+			}
+
+			// World position (centered at origin, not scaled by column_width)
+			world_x := f32(x) - f32(width) * 0.5
+			world_y := f32(y) - f32(height) * 0.5
+
+			instance := Column_Instance {
+				position = {world_x, world_y},
+				height   = height_value,
+				color    = color,
+			}
+
+			append(&instances, instance)
+		}
+	}
+
+	// Upload instance data to GPU and render
+	Upload_Instance_Buffer_3D(&r.renderer_3d, instances[:])
+	Draw_3D_Instances(&r.renderer_3d)
+}
+
 // Cleanup
 Destroy :: proc(r: ^Renderer) {
 	gl.DeleteVertexArrays(1, &r.vao)
@@ -307,4 +374,9 @@ Destroy :: proc(r: ^Renderer) {
 	gl.DeleteProgram(r.mandelbrot_program)
 	gl.DeleteProgram(r.texture_program)
 	gl.DeleteTextures(1, &r.cpu_texture)
+
+	// Cleanup 3D renderer
+	if r.renderer_3d_available {
+		Destroy_3D(&r.renderer_3d)
+	}
 }

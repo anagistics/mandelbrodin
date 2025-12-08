@@ -12,6 +12,7 @@ import imgui_sdl2 "vendor:imgui/imgui_impl_sdl2"
 import SDL "vendor:sdl2"
 
 import app "app"
+import camera "renderer"
 import mb "mandelbrot"
 import renderer "renderer"
 import ui "ui"
@@ -80,6 +81,14 @@ main :: proc() {
 		export_progress     = 0.0,
 		active_tab          = 0, // Default to Controls tab
 		show_help           = false, // Help overlay hidden by default
+		// 3D rendering
+		render_mode         = app.Render_Mode.Mode_2D, // Start in 2D mode
+		height_scale_3d     = 2.0, // Default height multiplier
+		column_width_3d     = 0.9, // Default column width (0.9 = small gap, 1.0 = no gap)
+		camera_3d_dragging  = false,
+		camera_3d_panning   = false,
+		camera_drag_start_x = 0,
+		camera_drag_start_y = 0,
 	}
 	defer delete(state.pixels)
 	defer delete(state.history)
@@ -199,11 +208,49 @@ main :: proc() {
 	// Load bookmarks
 	app.load_bookmarks(&state)
 
+	// Delta time tracking for camera smoothing
+	last_frame_time := time.now()
+
 	running := true
 	for running {
 		event: SDL.Event
 		for SDL.PollEvent(&event) {
-			imgui_sdl2.ProcessEvent(&event)
+			// Check if this is a keyboard event we should handle for viewport control
+			// If so, don't pass it to ImGui to prevent UI navigation interference
+			should_intercept_for_viewport := false
+
+			if event.type == .KEYDOWN {
+				// Get current mouse position
+				mouse_x, mouse_y: i32
+				SDL.GetMouseState(&mouse_x, &mouse_y)
+				mouse_over_viewport := mouse_x >= 0 && mouse_x < WIDTH && mouse_y >= 0 && mouse_y < HEIGHT
+
+				// Check if this is a viewport control key
+				key := event.key.keysym.sym
+				is_viewport_key :=
+					key == .LEFT ||
+					key == .RIGHT ||
+					key == .UP ||
+					key == .DOWN ||
+					key == .PAGEUP ||
+					key == .PAGEDOWN ||
+					key == .EQUALS ||
+					key == .MINUS ||
+					key == .KP_PLUS ||
+					key == .KP_MINUS ||
+					key == .R ||
+					key == .COMMA ||
+					key == .PERIOD
+
+				// Intercept if mouse is over viewport and it's a viewport control key
+				should_intercept_for_viewport = mouse_over_viewport && is_viewport_key
+			}
+
+			// Only pass event to ImGui if we're not intercepting it for viewport
+			if !should_intercept_for_viewport {
+				imgui_sdl2.ProcessEvent(&event)
+			}
+
 			io := imgui.GetIO()
 
 			#partial switch event.type {
@@ -280,55 +327,111 @@ main :: proc() {
 					handled = true
 				}
 
-				// Navigation shortcuts - work unless user is typing in a text field
-				// These should work even when ImGui keyboard navigation is active
-				if !handled && !io.WantTextInput {
-					// Arrow keys for panning
-					if key == .LEFT || key == .RIGHT || key == .UP || key == .DOWN {
-						app.history_save(&state)
+				// Get current mouse position to determine if it's over the viewport
+				mouse_x, mouse_y: i32
+				SDL.GetMouseState(&mouse_x, &mouse_y)
+				mouse_over_viewport := mouse_x >= 0 && mouse_x < WIDTH && mouse_y >= 0 && mouse_y < HEIGHT
 
-						// Pan distance: normal or faster with Shift
-						pan_distance := shift_pressed ? 0.1 : 0.05
-						scale_x := 3.5 / state.zoom
-						scale_y := 2.0 / state.zoom
+				// Navigation shortcuts work when:
+				// 1. Not typing in a text field (io.WantTextInput)
+				// 2. Mouse is over viewport (prioritize viewport controls)
+				//    OR ImGui doesn't want keyboard (no UI element focused)
+				if !handled && !io.WantTextInput && (mouse_over_viewport || !io.WantCaptureKeyboard) {
+					// Handle differently based on render mode
+					if state.render_mode == .Mode_3D && render_context.renderer_3d_available {
+						// 3D mode: Arrow keys rotate camera
+						if key == .LEFT || key == .RIGHT || key == .UP || key == .DOWN {
+							rotation_speed: f32 = shift_pressed ? 5.0 : 2.0 // degrees per press
 
-						// Apply rotation to pan direction
-						cos_r := math.cos(state.rotation)
-						sin_r := math.sin(state.rotation)
+							azimuth_delta: f32 = 0
+							elevation_delta: f32 = 0
 
-						dx, dy: f64 = 0, 0
-						if key == .LEFT {
-							dx = -pan_distance
-						} else if key == .RIGHT {
-							dx = pan_distance
-						} else if key == .UP {
-							dy = -pan_distance
-						} else if key == .DOWN {
-							dy = pan_distance
+							if key == .LEFT {
+								azimuth_delta = rotation_speed
+							} else if key == .RIGHT {
+								azimuth_delta = -rotation_speed
+							} else if key == .UP {
+								elevation_delta = rotation_speed
+							} else if key == .DOWN {
+								elevation_delta = -rotation_speed
+							}
+
+							camera.Rotate_Camera_3D(
+								&render_context.renderer_3d.camera,
+								azimuth_delta,
+								elevation_delta,
+							)
+							handled = true
 						}
 
-						// Rotate the pan direction
-						rotated_dx := dx * cos_r - dy * sin_r
-						rotated_dy := dx * sin_r + dy * cos_r
+						// PgUp and PgDown for camera zoom (move closer/farther)
+						if key == .PAGEUP || key == .EQUALS || key == .KP_PLUS {
+							// Zoom in (move closer): Shift for faster zoom
+							zoom_amount: f32 = shift_pressed ? -0.3 : -0.1  // -0.3 = 70% distance, -0.1 = 90% distance
+							camera.Zoom_Camera_3D(&render_context.renderer_3d.camera, zoom_amount)
+							handled = true
+						}
+						if key == .PAGEDOWN || key == .MINUS || key == .KP_MINUS {
+							// Zoom out (move farther): Shift for faster zoom
+							zoom_amount: f32 = shift_pressed ? 0.4 : 0.1  // 0.4 = 140% distance, 0.1 = 110% distance
+							camera.Zoom_Camera_3D(&render_context.renderer_3d.camera, zoom_amount)
+							handled = true
+						}
 
-						state.center_x += rotated_dx * scale_x
-						state.center_y += rotated_dy * scale_y
-						state.needs_recompute = true
-						handled = true
-					}
+						// R key to reset camera
+						if key == .R {
+							camera.Reset_Camera_3D(&render_context.renderer_3d.camera, f32(WIDTH), f32(HEIGHT))
+							handled = true
+						}
+					} else {
+						// 2D mode: Original behavior
+						// Arrow keys for panning
+						if key == .LEFT || key == .RIGHT || key == .UP || key == .DOWN {
+							app.history_save(&state)
 
-					// PgUp and PgDown for zooming
-					if key == .PAGEUP {
-						app.history_save(&state)
-						state.zoom *= 1.5
-						state.needs_recompute = true
-						handled = true
-					}
-					if key == .PAGEDOWN {
-						app.history_save(&state)
-						state.zoom /= 1.5
-						state.needs_recompute = true
-						handled = true
+							// Pan distance: normal or faster with Shift
+							pan_distance := shift_pressed ? 0.1 : 0.05
+							scale_x := 3.5 / state.zoom
+							scale_y := 2.0 / state.zoom
+
+							// Apply rotation to pan direction
+							cos_r := math.cos(state.rotation)
+							sin_r := math.sin(state.rotation)
+
+							dx, dy: f64 = 0, 0
+							if key == .LEFT {
+								dx = -pan_distance
+							} else if key == .RIGHT {
+								dx = pan_distance
+							} else if key == .UP {
+								dy = -pan_distance
+							} else if key == .DOWN {
+								dy = pan_distance
+							}
+
+							// Rotate the pan direction
+							rotated_dx := dx * cos_r - dy * sin_r
+							rotated_dy := dx * sin_r + dy * cos_r
+
+							state.center_x += rotated_dx * scale_x
+							state.center_y += rotated_dy * scale_y
+							state.needs_recompute = true
+							handled = true
+						}
+
+						// PgUp and PgDown for zooming
+						if key == .PAGEUP {
+							app.history_save(&state)
+							state.zoom *= 1.5
+							state.needs_recompute = true
+							handled = true
+						}
+						if key == .PAGEDOWN {
+							app.history_save(&state)
+							state.zoom /= 1.5
+							state.needs_recompute = true
+							handled = true
+						}
 					}
 
 					// , and . keys for rotation
@@ -366,54 +469,62 @@ main :: proc() {
 						mod_state := SDL.GetModState()
 						ctrl_pressed := (mod_state & SDL.KMOD_CTRL) != SDL.Keymod{}
 
-						// Save current state before changing
-						app.history_save(&state)
-
-						if ctrl_pressed {
-							// CTRL + Mouse Wheel: Rotate
-							rotation_increment := math.to_radians(f64(5.0)) // 5 degrees
-							if event.wheel.y > 0 {
-								state.rotation += rotation_increment
-							} else if event.wheel.y < 0 {
-								state.rotation -= rotation_increment
-							}
-							// Normalize rotation to [0, 2π)
-							state.rotation = math.mod(state.rotation, 2.0 * math.PI)
-							if state.rotation < 0 {
-								state.rotation += 2.0 * math.PI
-							}
+						// Handle differently based on render mode
+						if state.render_mode == .Mode_3D && render_context.renderer_3d_available {
+							// 3D mode: Mouse wheel controls camera distance
+							zoom_amount := f32(event.wheel.y) * 0.5
+							camera.Zoom_Camera_3D(&render_context.renderer_3d.camera, zoom_amount)
 						} else {
-							// Normal Mouse Wheel: Zoom
-							// Get world coordinates before zoom
-							world_x, world_y := screen_to_world(
-								&state,
-								mouse_x,
-								mouse_y,
-								WIDTH,
-								HEIGHT,
-							)
+							// 2D mode: Original behavior
+							// Save current state before changing
+							app.history_save(&state)
 
-							// Zoom in or out
-							zoom_factor := 1.2
-							if event.wheel.y > 0 {
-								state.zoom *= zoom_factor
-							} else if event.wheel.y < 0 {
-								state.zoom /= zoom_factor
+							if ctrl_pressed {
+								// CTRL + Mouse Wheel: Rotate
+								rotation_increment := math.to_radians(f64(5.0)) // 5 degrees
+								if event.wheel.y > 0 {
+									state.rotation += rotation_increment
+								} else if event.wheel.y < 0 {
+									state.rotation -= rotation_increment
+								}
+								// Normalize rotation to [0, 2π)
+								state.rotation = math.mod(state.rotation, 2.0 * math.PI)
+								if state.rotation < 0 {
+									state.rotation += 2.0 * math.PI
+								}
+							} else {
+								// Normal Mouse Wheel: Zoom
+								// Get world coordinates before zoom
+								world_x, world_y := screen_to_world(
+									&state,
+									mouse_x,
+									mouse_y,
+									WIDTH,
+									HEIGHT,
+								)
+
+								// Zoom in or out
+								zoom_factor := 1.2
+								if event.wheel.y > 0 {
+									state.zoom *= zoom_factor
+								} else if event.wheel.y < 0 {
+									state.zoom /= zoom_factor
+								}
+
+								// Adjust center to keep mouse position fixed in world coordinates
+								new_world_x, new_world_y := screen_to_world(
+									&state,
+									mouse_x,
+									mouse_y,
+									WIDTH,
+									HEIGHT,
+								)
+								state.center_x += world_x - new_world_x
+								state.center_y += world_y - new_world_y
 							}
 
-							// Adjust center to keep mouse position fixed in world coordinates
-							new_world_x, new_world_y := screen_to_world(
-								&state,
-								mouse_x,
-								mouse_y,
-								WIDTH,
-								HEIGHT,
-							)
-							state.center_x += world_x - new_world_x
-							state.center_y += world_y - new_world_y
+							state.needs_recompute = true
 						}
-
-						state.needs_recompute = true
 					}
 				}
 
@@ -424,85 +535,145 @@ main :: proc() {
 
 					// Only handle if in Mandelbrot area
 					if mouse_x >= 0 && mouse_x < WIDTH && mouse_y >= 0 && mouse_y < HEIGHT {
-						if event.button.button == SDL.BUTTON_LEFT {
-							// Check if shift is held for box zoom
-							keyboard_state := SDL.GetKeyboardState(nil)
-							if keyboard_state[SDL.Scancode.LSHIFT] == 1 ||
-							   keyboard_state[SDL.Scancode.RSHIFT] == 1 {
-								// Start box zoom
-								state.box_zoom_active = true
-								state.box_start_x = mouse_x
-								state.box_start_y = mouse_y
-								state.box_end_x = mouse_x
-								state.box_end_y = mouse_y
-							} else {
-								// Simple click to recenter
-								app.history_save(&state)
-								world_x, world_y := screen_to_world(
-									&state,
-									mouse_x,
-									mouse_y,
-									WIDTH,
-									HEIGHT,
-								)
-								state.center_x = world_x
-								state.center_y = world_y
-								state.needs_recompute = true
+						// Handle differently based on render mode
+						if state.render_mode == .Mode_3D && render_context.renderer_3d_available {
+							// 3D mode: Left drag = rotate camera, Right drag = pan camera
+							if event.button.button == SDL.BUTTON_LEFT {
+								state.camera_3d_dragging = true
+								state.camera_drag_start_x = mouse_x
+								state.camera_drag_start_y = mouse_y
+							} else if event.button.button == SDL.BUTTON_RIGHT {
+								state.camera_3d_panning = true
+								state.camera_drag_start_x = mouse_x
+								state.camera_drag_start_y = mouse_y
 							}
-						} else if event.button.button == SDL.BUTTON_RIGHT {
-							// Start dragging to pan
-							state.mouse_dragging = true
-							state.drag_start_x = f64(mouse_x)
-							state.drag_start_y = f64(mouse_y)
-							state.center_at_drag = {state.center_x, state.center_y}
+						} else {
+							// 2D mode: Original behavior
+							if event.button.button == SDL.BUTTON_LEFT {
+								// Check if shift is held for box zoom
+								keyboard_state := SDL.GetKeyboardState(nil)
+								if keyboard_state[SDL.Scancode.LSHIFT] == 1 ||
+								   keyboard_state[SDL.Scancode.RSHIFT] == 1 {
+									// Start box zoom
+									state.box_zoom_active = true
+									state.box_start_x = mouse_x
+									state.box_start_y = mouse_y
+									state.box_end_x = mouse_x
+									state.box_end_y = mouse_y
+								} else {
+									// Simple click to recenter
+									app.history_save(&state)
+									world_x, world_y := screen_to_world(
+										&state,
+										mouse_x,
+										mouse_y,
+										WIDTH,
+										HEIGHT,
+									)
+									state.center_x = world_x
+									state.center_y = world_y
+									state.needs_recompute = true
+								}
+							} else if event.button.button == SDL.BUTTON_RIGHT {
+								// Start dragging to pan
+								state.mouse_dragging = true
+								state.drag_start_x = f64(mouse_x)
+								state.drag_start_y = f64(mouse_y)
+								state.center_at_drag = {state.center_x, state.center_y}
+							}
 						}
 					}
 				}
 
 			case .MOUSEBUTTONUP:
-				if event.button.button == SDL.BUTTON_LEFT && state.box_zoom_active {
-					// Complete box zoom
-					state.box_zoom_active = false
+				if event.button.button == SDL.BUTTON_LEFT {
+					if state.camera_3d_dragging {
+						// End 3D camera rotation drag
+						state.camera_3d_dragging = false
+					} else if state.box_zoom_active {
+						// Complete box zoom (2D mode)
+						state.box_zoom_active = false
 
-					// Calculate box dimensions
-					x1 := min(state.box_start_x, state.box_end_x)
-					y1 := min(state.box_start_y, state.box_end_y)
-					x2 := max(state.box_start_x, state.box_end_x)
-					y2 := max(state.box_start_y, state.box_end_y)
+						// Calculate box dimensions
+						x1 := min(state.box_start_x, state.box_end_x)
+						y1 := min(state.box_start_y, state.box_end_y)
+						x2 := max(state.box_start_x, state.box_end_x)
+						y2 := max(state.box_start_y, state.box_end_y)
 
-					// Only zoom if box is large enough
-					if abs(x2 - x1) > 10 && abs(y2 - y1) > 10 {
-						// Save current state before changing
-						app.history_save(&state)
+						// Only zoom if box is large enough
+						if abs(x2 - x1) > 10 && abs(y2 - y1) > 10 {
+							// Save current state before changing
+							app.history_save(&state)
 
-						// Get world coordinates of box corners
-						world_x1, world_y1 := screen_to_world(&state, x1, y1, WIDTH, HEIGHT)
-						world_x2, world_y2 := screen_to_world(&state, x2, y2, WIDTH, HEIGHT)
+							// Get world coordinates of box corners
+							world_x1, world_y1 := screen_to_world(&state, x1, y1, WIDTH, HEIGHT)
+							world_x2, world_y2 := screen_to_world(&state, x2, y2, WIDTH, HEIGHT)
 
-						// Calculate new center
-						state.center_x = (world_x1 + world_x2) / 2.0
-						state.center_y = (world_y1 + world_y2) / 2.0
+							// Calculate new center
+							state.center_x = (world_x1 + world_x2) / 2.0
+							state.center_y = (world_y1 + world_y2) / 2.0
 
-						// Calculate new zoom to fit box
-						box_width := abs(world_x2 - world_x1)
-						box_height := abs(world_y2 - world_y1)
-						zoom_x := 3.5 / box_width
-						zoom_y := 2.0 / box_height
-						state.zoom = min(zoom_x, zoom_y)
+							// Calculate new zoom to fit box
+							box_width := abs(world_x2 - world_x1)
+							box_height := abs(world_y2 - world_y1)
+							zoom_x := 3.5 / box_width
+							zoom_y := 2.0 / box_height
+							state.zoom = min(zoom_x, zoom_y)
 
-						state.needs_recompute = true
+							state.needs_recompute = true
+						}
 					}
 				} else if event.button.button == SDL.BUTTON_RIGHT {
-					// Save history when pan is complete
-					if state.mouse_dragging {
-						app.history_save(&state)
+					if state.camera_3d_panning {
+						// End 3D camera panning
+						state.camera_3d_panning = false
+					} else {
+						// 2D mode: Save history when pan is complete
+						if state.mouse_dragging {
+							app.history_save(&state)
+						}
+						state.mouse_dragging = false
 					}
-					state.mouse_dragging = false
 				}
 
 			case .MOUSEMOTION:
-				if state.mouse_dragging {
-					// Pan view based on drag
+				if state.camera_3d_dragging {
+					// 3D camera rotation based on drag
+					mouse_x := event.motion.x
+					mouse_y := event.motion.y
+
+					dx := f32(mouse_x - state.camera_drag_start_x)
+					dy := f32(mouse_y - state.camera_drag_start_y)
+
+					// Rotate camera: dx controls azimuth, dy controls elevation
+					azimuth_delta := -dx * 0.5 // degrees (negative for natural feel)
+					elevation_delta := -dy * 0.5 // degrees
+
+					camera.Rotate_Camera_3D(
+						&render_context.renderer_3d.camera,
+						azimuth_delta,
+						elevation_delta,
+					)
+
+					// Update drag start position for next frame
+					state.camera_drag_start_x = mouse_x
+					state.camera_drag_start_y = mouse_y
+				} else if state.camera_3d_panning {
+					// 3D camera panning based on drag
+					mouse_x := event.motion.x
+					mouse_y := event.motion.y
+
+					dx := f32(mouse_x - state.camera_drag_start_x)
+					dy := f32(mouse_y - state.camera_drag_start_y)
+
+					// Pan camera: move target in screen space
+					camera.Pan_Camera_3D(&render_context.renderer_3d.camera, dx, -dy)
+
+					// Update drag start position for next frame
+					state.camera_drag_start_x = mouse_x
+					state.camera_drag_start_y = mouse_y
+				} else if state.mouse_dragging {
+					// 2D pan view based on drag
 					mouse_x := f64(event.motion.x)
 					mouse_y := f64(event.motion.y)
 
@@ -535,6 +706,11 @@ main :: proc() {
 			state.needs_recompute = false
 		}
 
+		// Calculate delta time for camera smoothing
+		current_frame_time := time.now()
+		delta_time := f32(time.duration_seconds(time.diff(last_frame_time, current_frame_time)))
+		last_frame_time = current_frame_time
+
 		// Start ImGui frame
 		imgui_opengl3.NewFrame()
 		imgui_sdl2.NewFrame()
@@ -545,19 +721,55 @@ main :: proc() {
 		gl.Scissor(0, 0, WIDTH, HEIGHT)
 		gl.Enable(gl.SCISSOR_TEST)
 		gl.ClearColor(0.0, 0.0, 0.0, 1.0)
-		gl.Clear(gl.COLOR_BUFFER_BIT)
 
-		if state.use_gpu {
-			// GPU rendering - compute in shader
+		// Choose rendering path based on mode
+		if state.render_mode == .Mode_3D && render_context.renderer_3d_available {
+			// 3D rendering mode
+			gl.Enable(gl.DEPTH_TEST)
+			gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+
+			// Update camera
+			camera.Update_Camera_3D(&render_context.renderer_3d.camera, delta_time)
+
+			// Compute Mandelbrot data (needed for 3D height extraction)
+			// In 3D mode, we always need pixel data regardless of use_gpu setting
+			if state.needs_recompute || len(state.pixels) != WIDTH * HEIGHT {
+				start_time := time.now()
+				mb.Compute(&state, WIDTH, HEIGHT)
+				end_time := time.now()
+				duration := time.diff(start_time, end_time)
+				state.computation_time_ms = time.duration_milliseconds(duration)
+				state.needs_recompute = false
+			}
+
+			// Update 3D renderer parameters
+			render_context.renderer_3d.height_scale = state.height_scale_3d
+			render_context.renderer_3d.column_width = state.column_width_3d
+
+			// Render 3D columns
 			start_time := time.now()
-			renderer.Render_GPU(&render_context, &state, WIDTH, HEIGHT)
+			renderer.Render_3D(&render_context, &state, WIDTH, HEIGHT)
 			end_time := time.now()
 			duration := time.diff(start_time, end_time)
 			state.computation_time_ms = time.duration_milliseconds(duration)
-			state.needs_recompute = false
+
+			gl.Disable(gl.DEPTH_TEST)
 		} else {
-			// CPU rendering - display precomputed texture
-			renderer.Render_CPU(&render_context, state.pixels, WIDTH, HEIGHT)
+			// 2D rendering mode
+			gl.Clear(gl.COLOR_BUFFER_BIT)
+
+			if state.use_gpu {
+				// GPU rendering - compute in shader
+				start_time := time.now()
+				renderer.Render_GPU(&render_context, &state, WIDTH, HEIGHT)
+				end_time := time.now()
+				duration := time.diff(start_time, end_time)
+				state.computation_time_ms = time.duration_milliseconds(duration)
+				state.needs_recompute = false
+			} else {
+				// CPU rendering - display precomputed texture
+				renderer.Render_CPU(&render_context, state.pixels, WIDTH, HEIGHT)
+			}
 		}
 
 		gl.Disable(gl.SCISSOR_TEST)

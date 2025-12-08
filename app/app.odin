@@ -6,6 +6,12 @@ import "core:strings"
 import "core:time"
 import stbi "vendor:stb/image"
 
+// Render mode (2D or 3D display)
+Render_Mode :: enum {
+	Mode_2D, // Flat pixel display (current)
+	Mode_3D, // 3D column display (new)
+}
+
 // Set the current palette by name, falling back to default if not found
 set_palette :: proc(state: ^App_State, palette_name: string) {
 	palette, found := visual.find_palette(state.palettes[:], palette_name)
@@ -69,4 +75,12 @@ App_State :: struct {
 	// UI state
 	active_tab:          int, // Currently active tab (0=Controls, 1=Bookmarks, 2=Export)
 	show_help:           bool, // Toggle help overlay display
+	// 3D Rendering
+	render_mode:         Render_Mode, // 2D or 3D display mode
+	height_scale_3d:     f32, // Height multiplier for 3D columns
+	column_width_3d:     f32, // Width of 3D columns
+	camera_3d_dragging:  bool, // Flag for 3D camera rotation drag (left button)
+	camera_3d_panning:   bool, // Flag for 3D camera panning (right button)
+	camera_drag_start_x: i32, // Mouse X at drag start
+	camera_drag_start_y: i32, // Mouse Y at drag start
 }

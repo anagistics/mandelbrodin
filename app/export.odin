@@ -4,7 +4,17 @@ import "core:fmt"
 import "core:strings"
 import "core:thread"
 import "core:sync"
+import "core:c"
 import stbi "vendor:stb/image"
+import png "../vendor_libpng"
+
+foreign import libc "system:c"
+
+@(default_calling_convention = "c")
+foreign libc {
+	fopen  :: proc(filename: cstring, mode: cstring) -> rawptr ---
+	fclose :: proc(stream: rawptr) -> c.int ---
+}
 
 // Export resolution presets
 Export_Resolution :: struct {
@@ -127,13 +137,148 @@ save_png :: proc(pixels: []u32, width, height: int, filepath: string) -> bool {
 	return true
 }
 
+// Save PNG image using libpng with compression level control
+save_png_libpng :: proc(pixels: []u32, width, height: int, filepath: string, compression_level: int = 6) -> bool {
+	NUM_THREADS :: 8
+
+	// Convert ARGB to RGB with multi-threaded optimization (same as stb version)
+	rgb_data := make([]u8, width * height * 3)
+	defer delete(rgb_data)
+
+	pixel_count := width * height
+
+	// Multi-threaded conversion for better performance
+	if pixel_count > 100000 {
+		threads: [NUM_THREADS]^thread.Thread
+		thread_data: [NUM_THREADS]Conversion_Thread_Data
+
+		pixels_per_thread := pixel_count / NUM_THREADS
+
+		for i in 0 ..< NUM_THREADS {
+			start_idx := i * pixels_per_thread
+			end_idx := start_idx + pixels_per_thread
+			if i == NUM_THREADS - 1 {
+				end_idx = pixel_count
+			}
+
+			thread_data[i] = Conversion_Thread_Data{
+				pixels    = pixels,
+				rgba_data = rgb_data,
+				start_idx = start_idx,
+				end_idx   = end_idx,
+			}
+
+			threads[i] = thread.create(convert_pixels_worker)
+			threads[i].data = &thread_data[i]
+			thread.start(threads[i])
+		}
+
+		for i in 0 ..< NUM_THREADS {
+			thread.join(threads[i])
+			thread.destroy(threads[i])
+		}
+	} else {
+		for i in 0 ..< pixel_count {
+			pixel := pixels[i]
+			r := u8((pixel >> 16) & 0xFF)
+			g := u8((pixel >> 8) & 0xFF)
+			b := u8(pixel & 0xFF)
+
+			rgb_data[i * 3 + 0] = r
+			rgb_data[i * 3 + 1] = g
+			rgb_data[i * 3 + 2] = b
+		}
+	}
+
+	// Open file for writing
+	filepath_cstr := strings.clone_to_cstring(filepath)
+	defer delete(filepath_cstr)
+
+	fp := fopen(filepath_cstr, "wb")
+	if fp == nil {
+		fmt.eprintln("Failed to open file for writing:", filepath)
+		return false
+	}
+	defer fclose(fp)
+
+	// Create PNG write structure
+	png_ptr := png.create_write_struct(png.PNG_LIBPNG_VER_STRING, nil, nil, nil)
+	if png_ptr == nil {
+		fmt.eprintln("Failed to create PNG write struct")
+		return false
+	}
+
+	// Create PNG info structure
+	info_ptr := png.create_info_struct(png_ptr)
+	if info_ptr == nil {
+		png.destroy_write_struct(&png_ptr, nil)
+		fmt.eprintln("Failed to create PNG info struct")
+		return false
+	}
+
+	// Set up error handling (simplified - using defaults)
+	// Note: libpng uses setjmp/longjmp for error handling, which is complex in Odin
+	// For now, we'll rely on the default error handlers
+
+	// Initialize I/O
+	png.init_io(png_ptr, rawptr(fp))
+
+	// Set image information
+	png.set_IHDR(
+		png_ptr,
+		info_ptr,
+		png.png_uint_32(width),
+		png.png_uint_32(height),
+		8, // bit depth
+		png.PNG_COLOR_TYPE_RGB,
+		png.PNG_INTERLACE_NONE,
+		png.PNG_COMPRESSION_TYPE_DEFAULT,
+		png.PNG_FILTER_TYPE_DEFAULT,
+	)
+
+	// Set compression level (0-9, default is 6)
+	// 0 = no compression, 1 = fastest, 9 = best compression
+	png.set_compression_level(png_ptr, c.int(compression_level))
+
+	// Write header
+	png.write_info(png_ptr, info_ptr)
+
+	// Prepare row pointers
+	row_pointers := make([]png.png_bytep, height)
+	defer delete(row_pointers)
+
+	for i in 0 ..< height {
+		row_pointers[i] = png.png_bytep(&rgb_data[i * width * 3])
+	}
+
+	// Write image data
+	png.write_image(png_ptr, raw_data(row_pointers))
+
+	// Finish writing
+	png.write_end(png_ptr, info_ptr)
+
+	// Clean up
+	png.destroy_write_struct(&png_ptr, &info_ptr)
+
+	fmt.println("Exported image to:", filepath)
+	return true
+}
+
 // Export current view to image file at specified resolution
 // Note: Compute function must be called from outside to avoid circular import
-export_image :: proc(pixels: []u32, width, height: int, filepath: string) -> bool {
+// compression_level: 0-9 (0=none, 1=fastest, 6=default, 9=best compression)
+//                    or -1 to use stb_image_write fallback
+export_image :: proc(pixels: []u32, width, height: int, filepath: string, compression_level: int = 1) -> bool {
 	fmt.printfln("Saving %dx%d image to %s...", width, height, filepath)
 
-	// Save to PNG
-	success := save_png(pixels, width, height, filepath)
+	// Use libpng with configurable compression level for better performance
+	success: bool
+	if compression_level >= 0 && compression_level <= 9 {
+		success = save_png_libpng(pixels, width, height, filepath, compression_level)
+	} else {
+		// Fallback to stb_image_write (slower, but no compression control)
+		success = save_png(pixels, width, height, filepath)
+	}
 
 	return success
 }

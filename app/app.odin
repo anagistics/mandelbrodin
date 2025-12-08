@@ -63,6 +63,7 @@ App_State :: struct {
 	// Export
 	export_resolution:   int, // Index of selected export resolution
 	export_filename:     string, // Export filename
+	export_compression:  int, // PNG compression level (0-9, default 1)
 	export_in_progress:  bool, // Flag indicating export is running
 	export_progress:     f32, // Export progress 0.0 to 1.0
 	// UI state

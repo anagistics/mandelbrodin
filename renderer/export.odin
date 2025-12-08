@@ -82,7 +82,8 @@ set_compute_uniforms :: proc(r: ^Renderer, state: ^app.App_State, width, height:
 }
 
 // Export using GPU compute shader (much faster than CPU)
-export_image_compute :: proc(r: ^Renderer, state: ^app.App_State, width, height: int, filepath: string) -> bool {
+// compression_level: 0-9 (0=none, 1=fastest, 6=default, 9=best) or -1 for stb_image_write
+export_image_compute :: proc(r: ^Renderer, state: ^app.App_State, width, height: int, filepath: string, compression_level: int = 1) -> bool {
 	if !r.compute_available {
 		fmt.println("Compute shader not available, falling back to CPU")
 		return export_image(state, width, height, filepath)
@@ -144,7 +145,7 @@ export_image_compute :: proc(r: ^Renderer, state: ^app.App_State, width, height:
 	}
 
 	// Save to file
-	success := app.export_image(pixels_u32, width, height, filepath)
+	success := app.export_image(pixels_u32, width, height, filepath, compression_level)
 
 	total_duration := time.diff(start_time, time.now())
 	fmt.printfln("Total export time: %.2f ms", time.duration_milliseconds(total_duration))

@@ -36,6 +36,52 @@ imgui.Text("Export High Resolution")
 
 	imgui.Separator()
 
+	// Compression level selection
+	imgui.Text("Compression Quality")
+
+	// Build compression options string (null-separated)
+	comp_builder := strings.builder_make()
+	defer strings.builder_destroy(&comp_builder)
+
+	compression_options := []string{
+		"No compression (fastest, huge files)",
+		"Level 1 - Fast (recommended)",
+		"Level 2",
+		"Level 3 - Fast",
+		"Level 4",
+		"Level 5",
+		"Level 6 - Default",
+		"Level 7",
+		"Level 8",
+		"Level 9 - Best (slowest)",
+	}
+
+	for option in compression_options {
+		strings.write_string(&comp_builder, option)
+		strings.write_byte(&comp_builder, 0)
+	}
+	compression_labels := strings.to_cstring(&comp_builder)
+
+	current_compression := i32(state.export_compression)
+	if imgui.Combo("##compression", &current_compression, compression_labels, i32(len(compression_options))) {
+		state.export_compression = int(current_compression)
+	}
+
+	// Show compression info
+	if state.export_compression == 0 {
+		imgui.TextDisabled("  Very fast, but files are ~10-20x larger")
+	} else if state.export_compression == 1 {
+		imgui.TextColored({0.3, 1.0, 0.3, 1.0}, "  ⚡ Recommended: Fast with good compression")
+	} else if state.export_compression <= 3 {
+		imgui.TextDisabled("  Good balance of speed and size")
+	} else if state.export_compression <= 6 {
+		imgui.TextDisabled("  Slower but smaller files")
+	} else {
+		imgui.TextDisabled("  Slowest: Maximum compression")
+	}
+
+	imgui.Separator()
+
 	// Filename input
 	imgui.Text("Output Filename")
 
@@ -96,7 +142,7 @@ imgui.Text("Export High Resolution")
 			state.export_in_progress = true
 
 			// Export using GPU compute shader (falls back to CPU if unavailable)
-			success := renderer.export_image_compute(r, state, resolution.width, resolution.height, output_filename)
+			success := renderer.export_image_compute(r, state, resolution.width, resolution.height, output_filename, state.export_compression)
 
 			state.export_in_progress = false
 		}

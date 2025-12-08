@@ -75,6 +75,7 @@ main :: proc() {
 		editing_bookmark    = -1,
 		export_resolution   = 2, // Default to 4K
 		export_filename     = "mandelbrot_export", // Default export filename
+		export_compression  = 1, // Default to fast compression (level 1)
 		export_in_progress  = false,
 		export_progress     = 0.0,
 		active_tab          = 0, // Default to Controls tab

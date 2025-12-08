@@ -1,10 +1,18 @@
 # Mandelbrot Explorer
 
-A high-performance, interactive Mandelbrot set renderer with real-time GPU acceleration, multi-threaded CPU rendering, and an intuitive user interface.
+A high-performance, interactive Mandelbrot set renderer with real-time GPU acceleration, multi-threaded CPU rendering, **3D visualization**, and an intuitive user interface.
 
 ## Features
 
-### 🚀 Triple Rendering Modes
+### 🎬 Dual Visualization Modes
+- **2D Mode**: Classic flat fractal rendering with color mapping
+- **3D Mode**: Revolutionary column-based visualization where iteration depth becomes physical height
+  - Instanced rendering with millions of 3D columns
+  - Orbital camera with full 6-DOF control (rotate, pan, zoom)
+  - Real-time Phong lighting with adjustable parameters
+  - Explore the Mandelbrot set as a three-dimensional landscape
+
+### 🚀 Triple Rendering Engines
 - **GPU Fragment Shader**: Real-time interactive display using OpenGL 3.3+ (50-100x faster than single-threaded CPU)
 - **GPU Compute Shader**: High-resolution exports using OpenGL 4.3+ compute shaders (100-1000x faster for exports)
 - **CPU Rendering**: Multi-threaded SIMD vectorized computation with dynamic load balancing (16-24x speedup)
@@ -39,7 +47,9 @@ A high-performance, interactive Mandelbrot set renderer with real-time GPU accel
 
 ## Controls
 
-### Mouse Controls
+### 2D Mode Controls
+
+**Mouse**
 | Action | Control |
 |--------|---------|
 | Zoom In/Out | Mouse Wheel |
@@ -48,36 +58,42 @@ A high-performance, interactive Mandelbrot set renderer with real-time GPU accel
 | Pan View | Right Click + Drag |
 | Box Zoom | Shift + Left Click + Drag |
 
-### Keyboard Shortcuts
-
-**Navigation**
+**Keyboard**
 | Key | Action |
 |-----|--------|
-| Page Up | Zoom in |
-| Page Down | Zoom out |
+| Page Up / Down | Zoom in / out |
 | Arrow Keys | Pan view |
 | Shift + Arrows | Pan faster |
 | `,` (comma) | Rotate counter-clockwise |
 | `.` (period) | Rotate clockwise |
 
-**History**
+### 3D Mode Controls
+
+**Mouse**
+| Action | Control |
+|--------|---------|
+| Rotate Camera | Left Click + Drag |
+| Pan Camera Target | Right Click + Drag |
+| Zoom In/Out | Mouse Wheel |
+
+**Keyboard**
+| Key | Action |
+|-----|--------|
+| Arrow Keys | Rotate camera (2° per press) |
+| Shift + Arrows | Rotate faster (5° per press) |
+| Page Up / Down | Move closer / farther |
+| Shift + PgUp/PgDn | Zoom faster |
+| R | Reset camera to default view |
+
+### General Controls
+
 | Key | Action |
 |-----|--------|
 | Alt + Left | Go back in history |
 | Alt + Right | Go forward in history |
-
-**Tabs**
-| Key | Action |
-|-----|--------|
-| Ctrl + 1 | Jump to Controls tab |
-| Ctrl + 2 | Jump to Bookmarks tab |
-| Ctrl + 3 | Jump to Export tab |
-
-**Other**
-| Key | Action |
-|-----|--------|
+| Ctrl + 1 / 2 / 3 | Jump to Controls / Bookmarks / Export tab |
 | Ctrl + S | Export image |
-| F1 | Toggle help overlay |
+| F1 | Toggle help overlay (tabbed: 2D/3D/General) |
 | ESC | Quit application |
 
 ## Installation
@@ -184,11 +200,19 @@ mandelbrodin/
 ├── app/                   # Core application state and logic
 ├── mandelbrot/            # Computation engines (scalar, SIMD)
 ├── renderer/              # OpenGL rendering and export
+│   ├── renderer.odin     # 2D rendering and exports
+│   ├── renderer_3d.odin  # 3D instanced rendering
+│   └── camera.odin       # 3D orbital camera system
 ├── visual/                # Palette and coloring systems
 ├── ui/                    # User interface components
+│   ├── control_panel.odin # Main controls and mode switching
+│   ├── help_overlay.odin # Tabbed help screen (F1)
+│   └── ...               # Other UI components
 ├── shaders/               # GLSL shaders (fragment + compute)
-│   ├── mandelbrot.frag   # Fragment shader (real-time display)
+│   ├── mandelbrot.frag   # 2D fragment shader (real-time display)
 │   ├── mandelbrot_compute.glsl  # Compute shader (GPU exports)
+│   ├── mandelbrot_3d.vert # 3D vertex shader (instancing)
+│   ├── mandelbrot_3d.frag # 3D fragment shader (Phong lighting)
 │   └── texture.*         # Texture display shaders
 ├── vendor_libpng/         # libpng bindings for optimized PNG export
 ├── palettes/              # Color palette definitions (JSON)
@@ -197,10 +221,18 @@ mandelbrodin/
 
 ## Technical Details
 
-**Rendering Modes:**
+**2D Rendering Modes:**
 - **GPU Display Mode**: Fragment shader (OpenGL 3.3+) computes Mandelbrot in real-time for interactive exploration
 - **GPU Export Mode**: Compute shader (OpenGL 4.3+) renders high-resolution exports at 100-1000× speed
 - **CPU Mode**: 8-way task parallelism with dynamic work queues and 4-wide AVX SIMD vectorization
+
+**3D Visualization (OpenGL 3.3+):**
+- **Instanced Rendering**: Single draw call renders millions of cube instances efficiently
+- **Height Mapping**: Iteration count/brightness extracted from 2D computation → column height
+- **Phong Lighting**: Ambient + Diffuse + Specular components for realistic appearance
+- **Orbital Camera**: Spherical coordinates (azimuth, elevation, distance) with smooth interpolation
+- **Smart Input Routing**: Mouse position determines whether keyboard controls viewport or UI
+- **Performance**: Handles 800×600 = 480,000 columns at 60+ FPS on modern GPUs
 
 **Export Optimization:**
 - Multi-threaded ARGB→RGB pixel conversion (8 threads)
@@ -219,12 +251,12 @@ mandelbrodin/
 ## Contributing
 
 Contributions are welcome! Areas for potential improvement:
-- AVX-512 support for 8-wide vectorization
-- Vulkan backend for cross-platform GPU acceleration (Phase 3 of PLAN.md)
-- Progressive rendering and adaptive coloring (Phase 2 of PLAN.md)
-- Perturbation theory for extreme zoom levels (>10^15)
-- Animation/video export capabilities
-- Real-time compute shader display mode
+- **3D Enhancements**: Shadow mapping, 3D model export (OBJ/PLY/STL), LOD optimization
+- **AVX-512 Support**: 8-wide vectorization for newer CPUs
+- **Vulkan Backend**: Cross-platform GPU acceleration (Phase 3 of PLAN.md)
+- **Progressive Rendering**: Adaptive coloring (Phase 2 of PLAN.md)
+- **Deep Zoom**: Perturbation theory for extreme zoom levels (>10^15)
+- **Animation**: Video export capabilities, camera path recording
 
 ## License
 

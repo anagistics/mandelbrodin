@@ -1,12 +1,13 @@
 package ui
 
 import app "../app"
+import renderer "../renderer"
 import "core:fmt"
 import "core:strings"
 import imgui "vendor:imgui"
 
 // Render just the content of the bookmarks panel (for use in tabs)
-Render_bookmarks_panel_content :: proc(state: ^app.App_State, width: int, height: int) {
+Render_bookmarks_panel_content :: proc(r: ^renderer.Renderer, state: ^app.App_State, width: int, height: int) {
 // Saved views
 imgui.Text("Bookmarks")
 	imgui.Separator()
@@ -16,7 +17,11 @@ imgui.Text("Bookmarks")
 		// Generate filename from timestamp
 		filename := fmt.aprintf("view_%d", len(state.bookmarks) + 1)
 		name := fmt.aprintf("View %d", len(state.bookmarks) + 1)
-		app.save_bookmark(state, filename, name)
+
+		// Pass camera if in 3D mode
+		camera_ptr := &r.renderer_3d.camera if r.renderer_3d_available else nil
+		app.save_bookmark(state, filename, name, camera_ptr)
+
 		delete(filename)
 		delete(name)
 	}
@@ -53,7 +58,8 @@ imgui.Text("Bookmarks")
 				if imgui.InputText(fmt.ctprintf("##edit_%d", i), cstring(raw_data(state.edit_buffer[:])), len(state.edit_buffer), flags) {
 					// Enter pressed - save the new name
 					new_name := strings.clone_from_cstring(cstring(raw_data(state.edit_buffer[:])))
-					app.update_bookmark_name(state, i, new_name)
+					camera_ptr := &r.renderer_3d.camera if r.renderer_3d_available else nil
+					app.update_bookmark_name(state, i, new_name, camera_ptr)
 					delete(new_name)
 					state.editing_bookmark = -1
 				}
@@ -74,8 +80,10 @@ imgui.Text("Bookmarks")
 				// Normal selectable item
 				if imgui.Selectable(fmt.ctprintf("%s##%d", display_name, i), is_selected) {
 					state.selected_bookmark = i
-					app.apply_view(state, bookmark.view)
+					camera_ptr := &r.renderer_3d.camera if r.renderer_3d_available else nil
+					app.apply_view(state, bookmark.view, camera_ptr)
 					app.history_save(state)
+					state.needs_recompute = true  // Force recompute when loading bookmark
 				}
 
 				// Detect double-click to enter edit mode
@@ -124,14 +132,14 @@ imgui.Text("Bookmarks")
 }
 
 // Render bookmarks panel with its own window (for standalone use)
-Render_bookmarks_panel :: proc(state: ^app.App_State, mandelbrot_width: int, control_width: int, height: int) {
+Render_bookmarks_panel :: proc(r: ^renderer.Renderer, state: ^app.App_State, mandelbrot_width: int, control_width: int, height: int) {
 	panel_x := f32(mandelbrot_width + control_width)
 	imgui.SetNextWindowPos(imgui.Vec2{panel_x, 0}, .Always)
 	imgui.SetNextWindowSize(imgui.Vec2{300, f32(height)}, .Always)
 
 	flags := imgui.WindowFlags{.NoCollapse, .NoMove, .NoResize}
 	if imgui.Begin("Bookmarks", nil, flags) {
-		Render_bookmarks_panel_content(state, 300, height)
+		Render_bookmarks_panel_content(r, state, 300, height)
 	}
 	imgui.End()
 }

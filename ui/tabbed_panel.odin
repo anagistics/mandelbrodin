@@ -28,7 +28,7 @@ Render_tabbed_panel :: proc(r: ^renderer.Renderer, state: ^app.App_State, x_offs
 				if state.active_tab == 1 {
 					state.active_tab = -1 // Clear the flag after it's been used
 				}
-				Render_bookmarks_panel_content(state, width, height)
+				Render_bookmarks_panel_content(r, state, width, height)
 				imgui.EndTabItem()
 			}
 

@@ -7,6 +7,7 @@ import "core:time"
 
 // View state for saving/loading
 View_State :: struct {
+	// 2D view parameters
 	center_x:            f64 `json:"center_x"`,
 	center_y:            f64 `json:"center_y"`,
 	zoom:                f64 `json:"zoom"`,
@@ -14,6 +15,20 @@ View_State :: struct {
 	max_iterations:      u64 `json:"max_iterations"`,
 	palette:             string `json:"palette"`,
 	use_smooth_coloring: bool `json:"use_smooth_coloring"`,
+	use_adaptive_coloring: bool `json:"use_adaptive_coloring,omitempty"`,
+
+	// 3D view parameters
+	render_mode:         string `json:"render_mode,omitempty"`, // "2D" or "3D"
+	camera_azimuth:      f32 `json:"camera_azimuth,omitempty"`,
+	camera_elevation:    f32 `json:"camera_elevation,omitempty"`,
+	camera_distance:     f32 `json:"camera_distance,omitempty"`,
+	camera_target_x:     f32 `json:"camera_target_x,omitempty"`,
+	camera_target_y:     f32 `json:"camera_target_y,omitempty"`,
+	camera_target_z:     f32 `json:"camera_target_z,omitempty"`,
+	height_scale_3d:     f32 `json:"height_scale_3d,omitempty"`,
+	column_width_3d:     f32 `json:"column_width_3d,omitempty"`,
+
+	// Metadata
 	name:                string `json:"name,omitempty"`,
 	created_at:          string `json:"created_at,omitempty"`,
 }
@@ -25,8 +40,16 @@ Bookmark :: struct {
 }
 
 // Save current view to JSON file
-save_view :: proc(state: ^App_State, filepath: string, name: string = "") -> bool {
+// camera parameter should be ^Camera_3D from renderer package (passed as rawptr to avoid cyclic import)
+save_view :: proc(state: ^App_State, filepath: string, name: string = "", camera: rawptr = nil) -> bool {
+	// Determine render mode string
+	mode_string := "2D"
+	if state.render_mode == .Mode_3D {
+		mode_string = "3D"
+	}
+
 	view := View_State {
+		// 2D parameters
 		center_x            = state.center_x,
 		center_y            = state.center_y,
 		zoom                = state.zoom,
@@ -34,8 +57,38 @@ save_view :: proc(state: ^App_State, filepath: string, name: string = "") -> boo
 		max_iterations      = state.max_iterations,
 		palette             = state.palette,
 		use_smooth_coloring = state.use_smooth_coloring,
+		use_adaptive_coloring = state.use_adaptive_coloring,
+
+		// 3D parameters
+		render_mode         = mode_string,
+		height_scale_3d     = state.height_scale_3d,
+		column_width_3d     = state.column_width_3d,
+
+		// Metadata
 		name                = name,
 		created_at          = fmt.tprintf("%v", time.now()),
+	}
+
+	// Add camera parameters if provided
+	// Note: This is a bit hacky - we receive rawptr to avoid cyclic import,
+	// but we know it's ^Camera_3D from the renderer package
+	if camera != nil {
+		// We need to access Camera_3D fields, so we define a local struct matching its layout
+		Camera_3D_Temp :: struct {
+			position: [3]f32,
+			azimuth: f32,
+			elevation: f32,
+			distance: f32,
+			target: [3]f32,
+			// ... other fields we don't need
+		}
+		cam := cast(^Camera_3D_Temp)camera
+		view.camera_azimuth = cam.azimuth
+		view.camera_elevation = cam.elevation
+		view.camera_distance = cam.distance
+		view.camera_target_x = cam.target.x
+		view.camera_target_y = cam.target.y
+		view.camera_target_z = cam.target.z
 	}
 
 	data, err := json.marshal(view, {pretty = true, use_spaces = true, spaces = 2})
@@ -74,14 +127,63 @@ load_view :: proc(filepath: string) -> (View_State, bool) {
 }
 
 // Apply loaded view to app state
-apply_view :: proc(state: ^App_State, view: View_State) {
+// camera parameter should be ^Camera_3D from renderer package (passed as rawptr to avoid cyclic import)
+apply_view :: proc(state: ^App_State, view: View_State, camera: rawptr = nil) {
+	// Apply 2D parameters
 	state.center_x = view.center_x
 	state.center_y = view.center_y
 	state.zoom = view.zoom
 	state.rotation = view.rotation
 	state.max_iterations = view.max_iterations
 	state.use_smooth_coloring = view.use_smooth_coloring
+	state.use_adaptive_coloring = view.use_adaptive_coloring
 	set_palette(state, view.palette)
+
+	// Apply render mode
+	if view.render_mode == "3D" {
+		state.render_mode = .Mode_3D
+	} else {
+		state.render_mode = .Mode_2D
+	}
+
+	// Apply 3D parameters
+	if view.height_scale_3d != 0 {
+		state.height_scale_3d = view.height_scale_3d
+	}
+	if view.column_width_3d != 0 {
+		state.column_width_3d = view.column_width_3d
+	}
+
+	// Apply camera parameters if provided
+	if camera != nil && view.camera_distance != 0 {
+		// We need to access Camera_3D fields, so we define a local struct matching its layout
+		Camera_3D_Temp :: struct {
+			position: [3]f32,
+			azimuth: f32,
+			elevation: f32,
+			distance: f32,
+			target: [3]f32,
+			fov: f32,
+			aspect: f32,
+			near_plane: f32,
+			far_plane: f32,
+			view_matrix: matrix[4, 4]f32,
+			projection_matrix: matrix[4, 4]f32,
+			target_azimuth: f32,
+			target_elevation: f32,
+			target_distance: f32,
+		}
+		cam := cast(^Camera_3D_Temp)camera
+		cam.azimuth = view.camera_azimuth
+		cam.elevation = view.camera_elevation
+		cam.distance = view.camera_distance
+		cam.target = {view.camera_target_x, view.camera_target_y, view.camera_target_z}
+
+		// Update target values for smooth interpolation
+		cam.target_azimuth = view.camera_azimuth
+		cam.target_elevation = view.camera_elevation
+		cam.target_distance = view.camera_distance
+	}
 }
 
 // Load all bookmarks from directory
@@ -138,7 +240,8 @@ load_bookmarks :: proc(state: ^App_State) {
 }
 
 // Save current view as bookmark
-save_bookmark :: proc(state: ^App_State, filename: string, name: string = "") {
+// camera parameter should be ^Camera_3D from renderer package (passed as rawptr to avoid cyclic import)
+save_bookmark :: proc(state: ^App_State, filename: string, name: string = "", camera: rawptr = nil) {
 	// Ensure .json extension
 	filepath: string
 	if len(filename) < 5 || filename[len(filename) - 5:] != ".json" {
@@ -147,7 +250,7 @@ save_bookmark :: proc(state: ^App_State, filename: string, name: string = "") {
 		filepath = fmt.tprintf("%s/%s", state.bookmarks_dir, filename)
 	}
 
-	if save_view(state, filepath, name) {
+	if save_view(state, filepath, name, camera) {
 		load_bookmarks(state) // Reload bookmarks
 	}
 }
@@ -164,7 +267,8 @@ delete_bookmark :: proc(state: ^App_State, index: int) {
 }
 
 // Update a bookmark's name
-update_bookmark_name :: proc(state: ^App_State, index: int, new_name: string) {
+// camera parameter should be ^Camera_3D from renderer package (passed as rawptr to avoid cyclic import)
+update_bookmark_name :: proc(state: ^App_State, index: int, new_name: string, camera: rawptr = nil) {
 	if index < 0 || index >= len(state.bookmarks) {
 		return
 	}
@@ -181,8 +285,8 @@ update_bookmark_name :: proc(state: ^App_State, index: int, new_name: string) {
 	// Update the name
 	view.name = new_name
 
-	// Save back to the same file
-	if save_view(state, filepath, new_name) {
+	// Save back to the same file (preserve camera data)
+	if save_view(state, filepath, new_name, camera) {
 		load_bookmarks(state) // Reload bookmarks to refresh the display
 	}
 }

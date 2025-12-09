@@ -164,6 +164,109 @@ imgui.Text("Export High Resolution")
 
 	imgui.Separator()
 	imgui.TextDisabled("Note: Export uses GPU compute shader (or CPU fallback)")
+
+	// 3D Model Export Section (only in 3D mode)
+	if state.render_mode == .Mode_3D {
+		imgui.Separator()
+		imgui.Separator()
+
+		imgui.Text("Export 3D Model (Experimental)")
+		imgui.Separator()
+
+		imgui.TextWrapped("Export the 3D visualization as an OBJ file for use with Blender, Maya, or other 3D software.")
+
+		imgui.Separator()
+
+		// Model resolution selection (simplified for 3D)
+		imgui.Text("Model Resolution")
+		model_res_options := []string {
+			"200x150 (30K columns, ~5 MB)",
+			"400x300 (120K columns, ~20 MB)",
+			"800x600 (480K columns, ~80 MB)",
+		}
+
+		model_res_widths := []int{200, 400, 800}
+		model_res_heights := []int{150, 300, 600}
+
+		model_res_builder := strings.builder_make()
+		defer strings.builder_destroy(&model_res_builder)
+		for option in model_res_options {
+			strings.write_string(&model_res_builder, option)
+			strings.write_byte(&model_res_builder, 0)
+		}
+		model_res_labels := strings.to_cstring(&model_res_builder)
+
+		// Use export_resolution as temp storage for model resolution
+		@static model_resolution: i32 = 1 // Default to 400x300
+
+		if imgui.Combo("##model_resolution", &model_resolution, model_res_labels, i32(len(model_res_options))) {
+			// Selection updated
+		}
+
+		imgui.Separator()
+
+		// 3D model filename
+		imgui.Text("Model Filename")
+		model_input_buffer: [256]u8 = {}
+		@static model_filename: string = "mandelbrot_3d"
+
+		for i in 0 ..< min(len(model_filename), 255) {
+			model_input_buffer[i] = model_filename[i]
+		}
+
+		if imgui.InputText("##model_filename", cstring(raw_data(model_input_buffer[:])), len(model_input_buffer), {}) {
+			null_pos := 0
+			for i in 0 ..< len(model_input_buffer) {
+				if model_input_buffer[i] == 0 {
+					null_pos = i
+					break
+				}
+			}
+			model_filename = strings.clone(string(model_input_buffer[:null_pos]))
+		}
+
+		if len(model_filename) > 0 {
+			imgui.TextDisabled(fmt.ctprintf("  -> %s.obj", strings.clone_to_cstring(model_filename)))
+		} else {
+			imgui.TextDisabled("  (enter filename)")
+		}
+
+		imgui.Separator()
+
+		// Export 3D model button
+		can_export_3d := len(model_filename) > 0 && !state.export_in_progress
+
+		if !can_export_3d {
+			imgui.BeginDisabled()
+		}
+
+		if imgui.Button("Export 3D Model (OBJ)", imgui.Vec2{-1, 40}) {
+			if len(model_filename) > 0 {
+				output_filename := model_filename
+				if !strings.has_suffix(output_filename, ".obj") {
+					output_filename = fmt.tprintf("%s.obj", output_filename)
+				}
+
+				state.export_in_progress = true
+
+				// Get selected resolution
+				width_3d := model_res_widths[model_resolution]
+				height_3d := model_res_heights[model_resolution]
+
+				// Export 3D model
+				success := renderer.export_3d_model_obj(r, state, width_3d, height_3d, output_filename)
+
+				state.export_in_progress = false
+			}
+		}
+
+		if !can_export_3d {
+			imgui.EndDisabled()
+		}
+
+		imgui.Separator()
+		imgui.TextWrapped("Note: 3D model files can be very large. Use lower resolutions for faster exports and smaller files. OBJ files include vertex colors.")
+	}
 }
 
 // Render export panel with its own window (for standalone use)

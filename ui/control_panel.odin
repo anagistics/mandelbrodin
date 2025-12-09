@@ -47,6 +47,20 @@ Render_control_panel_content :: proc(state: ^app.App_State, width: int, height: 
 		)
 	}
 
+	// Adaptive coloring toggle (only in CPU mode)
+	if !state.use_gpu {
+		if imgui.Checkbox("Adaptive Coloring", &state.use_adaptive_coloring) {
+			state.needs_recompute = true
+		}
+		if imgui.IsItemHovered() {
+			imgui.SetTooltip(
+				"Use histogram equalization for better color distribution and contrast (CPU only)",
+			)
+		}
+	} else {
+		imgui.TextDisabled("Adaptive (CPU only)")
+	}
+
 	imgui.Separator()
 
 	// 2D/3D render mode toggle

@@ -27,7 +27,10 @@ Thread_Data :: struct {
 
 // Compute Mandelbrot set using CPU (scalar or SIMD)
 Compute :: proc(state: ^app.App_State, width: int, height: int) {
-	if state.use_simd {
+	// Use adaptive coloring if enabled (overrides normal coloring)
+	if state.use_adaptive_coloring {
+		compute_adaptive(state, width, height)
+	} else if state.use_simd {
 		compute_simd(state, width, height)
 	} else {
 		compute_scalar(state, width, height)

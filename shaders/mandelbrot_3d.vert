@@ -21,17 +21,21 @@ out vec3 v_normal;      // World normal
 out vec3 v_color;       // Vertex color
 
 void main() {
+    // Invert height for plateau effect: interior (high brightness) stays at top,
+    // exterior (low brightness) extends downward
+    float inverted_height = 1.0 - a_instance_height;
+
     // Scale cube geometry
     vec3 scaled_pos = a_position;
     scaled_pos.xy *= u_column_width;  // Scale XY to column width
-    scaled_pos.z *= a_instance_height * u_height_scale;  // Scale Z to height
+    scaled_pos.z *= inverted_height * u_height_scale;  // Scale Z to inverted height
 
     // Translate to instance position
-    // Columns grow upward from Z=0, so offset by half height
+    // Columns grow downward from top (Z=0), so offset by -half height
     vec3 world_pos = vec3(
         a_instance_pos.x,
         a_instance_pos.y,
-        scaled_pos.z * 0.5  // Offset to start at ground
+        -scaled_pos.z * 0.5  // Negative offset: start at top, grow downward
     );
     world_pos += scaled_pos;
 

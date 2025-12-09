@@ -277,5 +277,5 @@ Built with:
 The following image is just one example of an exported image in 4K resolution. 
 ![4K Mandelbrot set image](images/example.png)
 
-Here we have an example of an 3D image:
-![4K 3D Mandelbrot image](images/3dexample.png)
+3D export of a "landscape" using adaptive coloring:
+![4K Adaptive Coloring 3D Mandelbrot landscape](images/3d_ex_ac.png)

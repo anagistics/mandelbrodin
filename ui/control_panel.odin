@@ -82,7 +82,8 @@ Render_control_panel_content :: proc(state: ^app.App_State, width: int, height: 
 		imgui.Indent(16)
 
 		// Height scale slider
-		if imgui.SliderFloat("Height Scale", &state.height_scale_3d, 0.1, 10.0, "%.2f", {}) {
+		imgui.Text("Height Scale")
+		if imgui.SliderFloat("##HeightScale", &state.height_scale_3d, 0.1, 10.0, "%.2f", {}) {
 			// No action needed, value is updated directly
 		}
 		if imgui.IsItemHovered() {
@@ -90,15 +91,13 @@ Render_control_panel_content :: proc(state: ^app.App_State, width: int, height: 
 		}
 
 		// Column width slider
-		if imgui.SliderFloat("Column Width", &state.column_width_3d, 0.1, 1.0, "%.2f", {}) {
+		imgui.Text("Column Width")
+		if imgui.SliderFloat("##ColumnWidth", &state.column_width_3d, 0.1, 1.0, "%.2f", {}) {
 			// No action needed, value is updated directly
 		}
 		if imgui.IsItemHovered() {
 			imgui.SetTooltip("Width of 3D columns (1.0 = adjacent, <1.0 = gaps)")
 		}
-
-		// Camera controls hint
-		imgui.TextWrapped("Camera: Left drag = rotate, Right drag = pan, Wheel = zoom, Arrows = rotate, R = reset")
 
 		imgui.Unindent(16)
 	}

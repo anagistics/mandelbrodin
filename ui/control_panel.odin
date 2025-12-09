@@ -138,26 +138,6 @@ Render_control_panel_content :: proc(state: ^app.App_State, width: int, height: 
 
 	imgui.Separator()
 
-	// Save/Load buttons
-	imgui.Text("Save/Load")
-	if imgui.Button("Save View...") {
-		// TODO: Open file dialog
-		// For now, save to default location
-		app.save_view(state, "saved_view.json", "Saved View")
-	}
-	imgui.SameLine(0, -1)
-	if imgui.Button("Load View...") {
-		// TODO: Open file dialog
-		// For now, try to load from default location
-		view, ok := app.load_view("saved_view.json")
-		if ok {
-			app.apply_view(state, view)
-			app.history_save(state)
-		}
-	}
-
-	imgui.Separator()
-
 	// History navigation
 	imgui.Text("Navigation History")
 

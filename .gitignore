@@ -7,9 +7,6 @@ bookmarks/*
 !bookmarks/elephant_valley.json
 !bookmarks/spiral.json
 
-# Ignore default save/load file
-saved_view.json
-
 # Ignore all files in palettes directory
 palettes/*
 

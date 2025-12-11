@@ -284,3 +284,6 @@ The following image is just one example of an exported image in 4K resolution.
 
 3D export of a "landscape" using adaptive coloring:
 ![4K Adaptive Coloring 3D Mandelbrot landscape](images/3d_ex_ac.png)
+
+Nice spiral in 5K resolution:
+![5K Spiral](images/spiral_5K.png)

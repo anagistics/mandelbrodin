@@ -132,7 +132,8 @@ imgui.Text("Export High Resolution")
 	}
 
 	if imgui.Button("Export Image", imgui.Vec2{-1, 40}) {
-		if len(state.export_filename) > 0 {
+		if len(state.export_filename) > 0 && !state.export_in_progress {
+			// Double-check: prevent multiple exports (safety against race conditions)
 			// Ensure .png extension
 			output_filename := state.export_filename
 			if !strings.has_suffix(output_filename, ".png") {
@@ -154,16 +155,24 @@ imgui.Text("Export High Resolution")
 			use_async := (state.render_mode == .Mode_2D && !r.compute_available)
 
 			if use_async {
-				// Start background export thread (CPU only)
-				state.export_thread = rawptr(app.export_image_async(
-					state,
-					resolution.width,
-					resolution.height,
-					output_filename,
-					state.export_compression,
-					mb.Compute, // Pass compute function
-				))
-				// Thread will update state.export_in_progress when done
+				// Safety check: ensure no existing thread (should not happen due to button disable)
+				if state.export_thread != nil {
+					fmt.eprintln("WARNING: Export already in progress! Ignoring new export request.")
+					state.export_in_progress = false
+					state.export_stage = .Error
+					state.export_error = "Export already in progress"
+				} else {
+					// Start background export thread (CPU only)
+					state.export_thread = rawptr(app.export_image_async(
+						state,
+						resolution.width,
+						resolution.height,
+						output_filename,
+						state.export_compression,
+						mb.Compute, // Pass compute function
+					))
+					// Thread will update state.export_in_progress when done
+				}
 			} else {
 				// Synchronous export (GPU compute or 3D)
 				success := renderer.export_image_compute(r, state, resolution.width, resolution.height, output_filename, state.export_compression)

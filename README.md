@@ -2,6 +2,8 @@
 
 A high-performance, interactive Mandelbrot set renderer with real-time GPU acceleration, multi-threaded CPU rendering, **3D visualization**, and an intuitive user interface.
 
+Additionally, this is an exercise in _vibe_ coding using Anthropic's Claude Code. I wanted to see how this works and how to improve the outcomes. Besides this, it's an interesting way to learn several new technologies, like Odin itself, shader programming, and ImGui. Definitely worth the trial.
+
 ## Features
 
 ### 🎬 Dual Visualization Modes

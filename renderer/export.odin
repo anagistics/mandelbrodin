@@ -40,7 +40,7 @@ export_image_2d :: proc(state: ^app.App_State, width, height: int, filepath: str
 	fmt.printfln("Computation took %.2f ms", time.duration_milliseconds(duration))
 
 	// Save to file
-	success := app.export_image(pixels, width, height, filepath)
+	success := app.export_image(pixels, width, height, filepath, 1, state)
 
 	if success {
 		fmt.println("Export completed successfully!")
@@ -174,7 +174,7 @@ export_image_3d :: proc(r: ^Renderer, state: ^app.App_State, width, height: int,
 	fmt.printfln("3D rendering took %.2f ms", time.duration_milliseconds(duration))
 
 	// Save to file
-	success := app.export_image(pixels, width, height, filepath)
+	success := app.export_image(pixels, width, height, filepath, 1, state)
 
 	if success {
 		fmt.println("Export completed successfully!")
@@ -297,7 +297,7 @@ export_image_compute :: proc(r: ^Renderer, state: ^app.App_State, width, height:
 	}
 
 	// Save to file
-	success := app.export_image(pixels_u32, width, height, filepath, compression_level)
+	success := app.export_image(pixels_u32, width, height, filepath, compression_level, state)
 
 	total_duration := time.diff(start_time, time.now())
 	fmt.printfln("Total export time: %.2f ms", time.duration_milliseconds(total_duration))

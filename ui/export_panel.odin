@@ -4,6 +4,7 @@ import app "../app"
 import renderer "../renderer"
 import "core:fmt"
 import "core:strings"
+import "core:time"
 import imgui "vendor:imgui"
 
 // Render just the content of the export panel (for use in tabs)
@@ -140,10 +141,22 @@ imgui.Text("Export High Resolution")
 			// Trigger export
 			resolution := app.EXPORT_RESOLUTIONS[state.export_resolution]
 			state.export_in_progress = true
+			state.export_progress = 0.0
+			state.export_stage = .Computing
+			state.export_start_time = time.now()
+			state.export_error = ""
 
 			// Export using GPU compute shader (falls back to CPU if unavailable)
 			success := renderer.export_image_compute(r, state, resolution.width, resolution.height, output_filename, state.export_compression)
 
+			// Update final status
+			if success {
+				state.export_stage = .Completed
+				state.export_progress = 1.0
+			} else {
+				state.export_stage = .Error
+				state.export_error = "Export failed (check console for details)"
+			}
 			state.export_in_progress = false
 		}
 	}
@@ -152,9 +165,40 @@ imgui.Text("Export High Resolution")
 		imgui.EndDisabled()
 	}
 
+	// Progress bar and status (shown during export)
 	if state.export_in_progress {
-		imgui.Text("Exporting...")
-		// Note: For now, export is synchronous. Could be made async with threading
+		imgui.Separator()
+
+		// Stage text
+		stage_text := "Starting..."
+		#partial switch state.export_stage {
+		case .Computing:
+			stage_text = "Computing Mandelbrot..."
+		case .Encoding:
+			stage_text = "Encoding PNG..."
+		case .Completed:
+			stage_text = "✓ Export completed!"
+		case .Error:
+			stage_text = "✗ Export failed!"
+		}
+
+		imgui.Text(strings.clone_to_cstring(stage_text))
+
+		// Progress bar
+		progress_text := fmt.ctprintf("%.0f%%", state.export_progress * 100.0)
+		imgui.ProgressBar(state.export_progress, imgui.Vec2{-1, 0}, progress_text)
+
+		// Show elapsed time
+		if state.export_stage == .Computing || state.export_stage == .Encoding {
+			elapsed := time.since(state.export_start_time)
+			elapsed_sec := time.duration_seconds(elapsed)
+			imgui.TextDisabled(fmt.ctprintf("Elapsed: %.1fs", elapsed_sec))
+		}
+
+		// Show error message if failed
+		if state.export_stage == .Error && len(state.export_error) > 0 {
+			imgui.TextColored({1.0, 0.3, 0.3, 1.0}, fmt.ctprintf("Error: %s", strings.clone_to_cstring(state.export_error)))
+		}
 	}
 
 	imgui.Separator()

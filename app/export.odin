@@ -57,7 +57,7 @@ convert_pixels_worker :: proc(t: ^thread.Thread) {
 }
 
 // Save PNG image using stb_image_write with optimizations
-save_png :: proc(pixels: []u32, width, height: int, filepath: string) -> bool {
+save_png :: proc(pixels: []u32, width, height: int, filepath: string, state: ^App_State = nil) -> bool {
 	NUM_THREADS :: 8
 
 	// Convert ARGB to RGB with multi-threaded optimization
@@ -138,7 +138,7 @@ save_png :: proc(pixels: []u32, width, height: int, filepath: string) -> bool {
 }
 
 // Save PNG image using libpng with compression level control
-save_png_libpng :: proc(pixels: []u32, width, height: int, filepath: string, compression_level: int = 6) -> bool {
+save_png_libpng :: proc(pixels: []u32, width, height: int, filepath: string, compression_level: int = 6, state: ^App_State = nil) -> bool {
 	NUM_THREADS :: 8
 
 	// Convert ARGB to RGB with multi-threaded optimization (same as stb version)
@@ -177,6 +177,11 @@ save_png_libpng :: proc(pixels: []u32, width, height: int, filepath: string, com
 			thread.join(threads[i])
 			thread.destroy(threads[i])
 		}
+
+		// Update progress after pixel conversion
+		if state != nil {
+			state.export_progress = 0.7
+		}
 	} else {
 		for i in 0 ..< pixel_count {
 			pixel := pixels[i]
@@ -187,6 +192,11 @@ save_png_libpng :: proc(pixels: []u32, width, height: int, filepath: string, com
 			rgb_data[i * 3 + 0] = r
 			rgb_data[i * 3 + 1] = g
 			rgb_data[i * 3 + 2] = b
+		}
+
+		// Update progress after pixel conversion
+		if state != nil {
+			state.export_progress = 0.7
 		}
 	}
 
@@ -260,6 +270,11 @@ save_png_libpng :: proc(pixels: []u32, width, height: int, filepath: string, com
 	// Clean up
 	png.destroy_write_struct(&png_ptr, &info_ptr)
 
+	// Update progress to complete
+	if state != nil {
+		state.export_progress = 1.0
+	}
+
 	fmt.println("Exported image to:", filepath)
 	return true
 }
@@ -268,16 +283,23 @@ save_png_libpng :: proc(pixels: []u32, width, height: int, filepath: string, com
 // Note: Compute function must be called from outside to avoid circular import
 // compression_level: 0-9 (0=none, 1=fastest, 6=default, 9=best compression)
 //                    or -1 to use stb_image_write fallback
-export_image :: proc(pixels: []u32, width, height: int, filepath: string, compression_level: int = 1) -> bool {
+// state: optional pointer to App_State for progress tracking
+export_image :: proc(pixels: []u32, width, height: int, filepath: string, compression_level: int = 1, state: ^App_State = nil) -> bool {
 	fmt.printfln("Saving %dx%d image to %s...", width, height, filepath)
+
+	// Update stage to Encoding if we have state
+	if state != nil {
+		state.export_stage = .Encoding
+		state.export_progress = 0.5
+	}
 
 	// Use libpng with configurable compression level for better performance
 	success: bool
 	if compression_level >= 0 && compression_level <= 9 {
-		success = save_png_libpng(pixels, width, height, filepath, compression_level)
+		success = save_png_libpng(pixels, width, height, filepath, compression_level, state)
 	} else {
 		// Fallback to stb_image_write (slower, but no compression control)
-		success = save_png(pixels, width, height, filepath)
+		success = save_png(pixels, width, height, filepath, state)
 	}
 
 	return success

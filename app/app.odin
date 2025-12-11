@@ -12,6 +12,15 @@ Render_Mode :: enum {
 	Mode_3D, // 3D column display (new)
 }
 
+// Export stage for progress tracking
+Export_Stage :: enum {
+	Idle,      // Not exporting
+	Computing, // CPU/GPU computation in progress
+	Encoding,  // PNG encoding in progress
+	Completed, // Export finished successfully
+	Error,     // Export failed
+}
+
 // Set the current palette by name, falling back to default if not found
 set_palette :: proc(state: ^App_State, palette_name: string) {
 	palette, found := visual.find_palette(state.palettes[:], palette_name)
@@ -73,6 +82,9 @@ App_State :: struct {
 	export_compression:  int, // PNG compression level (0-9, default 1)
 	export_in_progress:  bool, // Flag indicating export is running
 	export_progress:     f32, // Export progress 0.0 to 1.0
+	export_stage:        Export_Stage, // Current export stage
+	export_start_time:   time.Time, // When export started (for elapsed time display)
+	export_error:        string, // Error message if export failed
 	// UI state
 	active_tab:          int, // Currently active tab (0=Controls, 1=Bookmarks, 2=Export)
 	show_help:           bool, // Toggle help overlay display

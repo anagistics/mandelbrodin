@@ -47,7 +47,7 @@ compute_adaptive :: proc(state: ^app.App_State, width: int, height: int) {
 		offset_x := state.center_x - (1.75 / state.zoom)
 		offset_y := state.center_y - (1.0 / state.zoom)
 
-		work_queue := Work_Queue{next_row = 0, total_rows = height}
+		work_queue := Work_Queue{next_row = 0, total_rows = height, completed_rows = 0}
 		threads: [NUM_THREADS]^thread.Thread
 		thread_data: [NUM_THREADS]Thread_Data_Adaptive_Pass1
 
@@ -81,7 +81,7 @@ compute_adaptive :: proc(state: ^app.App_State, width: int, height: int) {
 
 	// Pass 3: Apply adaptive coloring
 	{
-		work_queue := Work_Queue{next_row = 0, total_rows = height}
+		work_queue := Work_Queue{next_row = 0, total_rows = height, completed_rows = 0}
 		threads: [NUM_THREADS]^thread.Thread
 		thread_data: [NUM_THREADS]Thread_Data_Adaptive_Pass2
 
@@ -161,6 +161,12 @@ compute_adaptive_pass1_worker :: proc(t: ^thread.Thread) {
 				magnitudes[idx] = mag_sq
 			}
 		}
+
+		// Update progress tracking (Pass 1: 0-33%)
+		completed := sync.atomic_add(&work_queue.completed_rows, 1)
+		if state.export_in_progress {
+			state.export_progress = f32(completed) / f32(work_queue.total_rows) * 0.33
+		}
 	}
 }
 
@@ -195,6 +201,12 @@ compute_adaptive_pass2_worker :: proc(t: ^thread.Thread) {
 				state.current_palette,
 			)
 			state.pixels[idx] = color
+		}
+
+		// Update progress tracking (Pass 2: 33-50%)
+		completed := sync.atomic_add(&work_queue.completed_rows, 1)
+		if state.export_in_progress {
+			state.export_progress = 0.33 + f32(completed) / f32(work_queue.total_rows) * 0.17
 		}
 	}
 }

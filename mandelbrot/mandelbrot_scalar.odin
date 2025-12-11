@@ -16,7 +16,7 @@ compute_scalar :: proc(state: ^app.App_State, width: int, height: int) {
 	offset_y := state.center_y - (1.0 / state.zoom)
 
 	// Initialize work queue for dynamic load balancing
-	work_queue := Work_Queue{next_row = 0, total_rows = height}
+	work_queue := Work_Queue{next_row = 0, total_rows = height, completed_rows = 0}
 
 	// Create threads and thread data
 	threads: [NUM_THREADS]^thread.Thread
@@ -105,6 +105,14 @@ compute_scalar_worker :: proc(t: ^thread.Thread) {
 				)
 				state.pixels[py * width + px[i]] = color
 			}
+		}
+
+		// Update progress tracking
+		completed := sync.atomic_add(&work_queue.completed_rows, 1)
+		if state.export_in_progress {
+			// Update progress: completed / total (0.0 to 1.0)
+			// Reserve 0.0-0.5 for computation, 0.5-1.0 for encoding
+			state.export_progress = f32(completed) / f32(work_queue.total_rows) * 0.5
 		}
 	}
 }

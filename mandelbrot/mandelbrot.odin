@@ -10,8 +10,9 @@ NUM_THREADS :: 8
 
 // Work queue for dynamic load balancing
 Work_Queue :: struct {
-	next_row:   int, // Atomic counter for next row to process
-	total_rows: int, // Total number of rows to process
+	next_row:       int, // Atomic counter for next row to process
+	total_rows:     int, // Total number of rows to process
+	completed_rows: int, // Atomic counter for completed rows (for progress tracking)
 }
 
 // Thread data for passing parameters to worker threads

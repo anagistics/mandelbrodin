@@ -22,6 +22,10 @@ export_image :: proc(r: ^Renderer, state: ^app.App_State, width, height: int, fi
 export_image_2d :: proc(state: ^app.App_State, width, height: int, filepath: string) -> bool {
 	fmt.printfln("Exporting 2D %dx%d image to %s...", width, height, filepath)
 
+	// Update stage to Computing
+	state.export_stage = .Computing
+	state.export_progress = 0.0
+
 	// Allocate temporary pixel buffer
 	pixels := make([]u32, width * height)
 	defer delete(pixels)
@@ -54,6 +58,10 @@ export_image_2d :: proc(state: ^app.App_State, width, height: int, filepath: str
 // Export 3D view (render to framebuffer and capture)
 export_image_3d :: proc(r: ^Renderer, state: ^app.App_State, width, height: int, filepath: string) -> bool {
 	fmt.printfln("Exporting 3D %dx%d image to %s...", width, height, filepath)
+
+	// Update stage to Computing
+	state.export_stage = .Computing
+	state.export_progress = 0.0
 
 	start_time := time.now()
 
@@ -244,6 +252,10 @@ export_image_compute :: proc(r: ^Renderer, state: ^app.App_State, width, height:
 	fmt.printfln("Exporting %dx%d image using GPU compute shader...", width, height)
 	start_time := time.now()
 
+	// Update stage to Computing
+	state.export_stage = .Computing
+	state.export_progress = 0.0
+
 	// Create output texture
 	output_texture: u32
 	gl.GenTextures(1, &output_texture)
@@ -276,6 +288,10 @@ export_image_compute :: proc(r: ^Renderer, state: ^app.App_State, width, height:
 	computation_end := time.now()
 	computation_duration := time.diff(computation_start, computation_end)
 	fmt.printfln("GPU computation took %.2f ms", time.duration_milliseconds(computation_duration))
+
+	// Update progress after computation
+	state.export_progress = 0.5
+	state.export_stage = .Encoding
 
 	// Read pixels from texture
 	pixels := make([]u8, width * height * 4)  // RGBA format

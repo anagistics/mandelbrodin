@@ -85,6 +85,7 @@ App_State :: struct {
 	export_stage:        Export_Stage, // Current export stage
 	export_start_time:   time.Time, // When export started (for elapsed time display)
 	export_error:        string, // Error message if export failed
+	export_thread:       rawptr, // Background export thread data (nil if not running)
 	// UI state
 	active_tab:          int, // Currently active tab (0=Controls, 1=Bookmarks, 2=Export)
 	show_help:           bool, // Toggle help overlay display

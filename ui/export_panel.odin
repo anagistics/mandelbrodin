@@ -2,6 +2,7 @@ package ui
 
 import app "../app"
 import renderer "../renderer"
+import mb "../mandelbrot"
 import "core:fmt"
 import "core:strings"
 import "core:time"
@@ -146,18 +147,37 @@ imgui.Text("Export High Resolution")
 			state.export_start_time = time.now()
 			state.export_error = ""
 
-			// Export using GPU compute shader (falls back to CPU if unavailable)
-			success := renderer.export_image_compute(r, state, resolution.width, resolution.height, output_filename, state.export_compression)
+			// Determine export mode:
+			// - For 2D mode with CPU rendering: use async (background thread)
+			// - For 2D mode with GPU compute: use sync (OpenGL context not thread-safe)
+			// - For 3D mode: use sync (OpenGL rendering required)
+			use_async := (state.render_mode == .Mode_2D && !r.compute_available)
 
-			// Update final status
-			if success {
-				state.export_stage = .Completed
-				state.export_progress = 1.0
+			if use_async {
+				// Start background export thread (CPU only)
+				state.export_thread = rawptr(app.export_image_async(
+					state,
+					resolution.width,
+					resolution.height,
+					output_filename,
+					state.export_compression,
+					mb.Compute, // Pass compute function
+				))
+				// Thread will update state.export_in_progress when done
 			} else {
-				state.export_stage = .Error
-				state.export_error = "Export failed (check console for details)"
+				// Synchronous export (GPU compute or 3D)
+				success := renderer.export_image_compute(r, state, resolution.width, resolution.height, output_filename, state.export_compression)
+
+				// Update final status
+				if success {
+					state.export_stage = .Completed
+					state.export_progress = 1.0
+				} else {
+					state.export_stage = .Error
+					state.export_error = "Export failed (check console for details)"
+				}
+				state.export_in_progress = false
 			}
-			state.export_in_progress = false
 		}
 	}
 

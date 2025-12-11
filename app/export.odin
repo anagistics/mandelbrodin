@@ -5,6 +5,7 @@ import "core:strings"
 import "core:thread"
 import "core:sync"
 import "core:c"
+import "core:time"
 import stbi "vendor:stb/image"
 import png "../vendor_libpng"
 
@@ -303,4 +304,126 @@ export_image :: proc(pixels: []u32, width, height: int, filepath: string, compre
 	}
 
 	return success
+}
+
+// Compute function signature for export threading
+// Takes (state, width, height) and computes pixels into state.pixels
+Compute_Func :: #type proc(state: ^App_State, width, height: int)
+
+// Thread data for background export
+Export_Thread_Data :: struct {
+	// Input parameters
+	state:             ^App_State,
+	width:             int,
+	height:            int,
+	filepath:          string,
+	compression_level: int,
+	compute_func:      Compute_Func, // Function to compute pixels
+
+	// Thread handle
+	thread_handle:     ^thread.Thread,
+
+	// Status (accessed atomically from main thread)
+	is_complete:       bool,
+	success:           bool,
+}
+
+// Worker function for background CPU export
+export_cpu_worker :: proc(t: ^thread.Thread) {
+	data := cast(^Export_Thread_Data)t.data
+	state := data.state
+
+	// Allocate pixel buffer
+	pixels := make([]u32, data.width * data.height)
+	defer delete(pixels)
+
+	// Create temporary export state
+	export_state := state^
+	export_state.pixels = pixels
+
+	// Compute Mandelbrot at export resolution (this updates state.export_progress)
+	fmt.printfln("Computing %dx%d image...", data.width, data.height)
+	start_time := time.now()
+	data.compute_func(&export_state, data.width, data.height)
+	end_time := time.now()
+
+	duration := time.diff(start_time, end_time)
+	fmt.printfln("Computation took %.2f ms", time.duration_milliseconds(duration))
+
+	// Save to file (this also updates state.export_progress)
+	success := export_image(pixels, data.width, data.height, data.filepath, data.compression_level, state)
+
+	// Update completion status
+	sync.atomic_store(&data.success, success)
+	sync.atomic_store(&data.is_complete, true)
+
+	if success {
+		fmt.println("✓ Background export completed successfully!")
+	} else {
+		fmt.eprintln("✗ Background export failed!")
+	}
+}
+
+// Start a background export thread (for CPU exports only)
+// Returns thread data that must be polled and freed by caller
+// compute_func: function to compute pixels (e.g., mb.Compute)
+export_image_async :: proc(state: ^App_State, width, height: int, filepath: string, compression_level: int, compute_func: Compute_Func) -> ^Export_Thread_Data {
+	// Allocate thread data (caller must free after thread completes)
+	data := new(Export_Thread_Data)
+	data.state = state
+	data.width = width
+	data.height = height
+	data.filepath = strings.clone(filepath) // Clone string for thread safety
+	data.compression_level = compression_level
+	data.compute_func = compute_func
+	data.is_complete = false
+	data.success = false
+
+	// Create and start thread
+	data.thread_handle = thread.create(export_cpu_worker)
+	data.thread_handle.data = data
+	thread.start(data.thread_handle)
+
+	fmt.println("Started background export thread...")
+	return data
+}
+
+// Check if export thread is complete and clean up if done
+// Returns true if export is still running, false if complete
+poll_export_thread :: proc(data: ^Export_Thread_Data) -> (still_running: bool) {
+	if data == nil {
+		return false
+	}
+
+	// Check if complete
+	is_complete := sync.atomic_load(&data.is_complete)
+	if !is_complete {
+		return true // Still running
+	}
+
+	// Thread is complete, join and cleanup
+	thread.join(data.thread_handle)
+	thread.destroy(data.thread_handle)
+
+	// Free cloned filepath
+	delete(data.filepath)
+
+	// Get final success status
+	success := sync.atomic_load(&data.success)
+
+	// Update app state
+	if success {
+		data.state.export_stage = .Completed
+		data.state.export_progress = 1.0
+	} else {
+		data.state.export_stage = .Error
+		data.state.export_error = "Export failed (check console for details)"
+	}
+
+	data.state.export_in_progress = false
+
+	// Free thread data
+	free(data)
+
+	return false // Complete
 }

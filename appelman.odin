@@ -706,6 +706,16 @@ main :: proc() {
 			state.needs_recompute = false
 		}
 
+		// Poll background export thread if running
+		if state.export_thread != nil {
+			thread_data := cast(^app.Export_Thread_Data)state.export_thread
+			still_running := app.poll_export_thread(thread_data)
+			if !still_running {
+				// Thread completed and cleaned up
+				state.export_thread = nil
+			}
+		}
+
 		// Calculate delta time for camera smoothing
 		current_frame_time := time.now()
 		delta_time := f32(time.duration_seconds(time.diff(last_frame_time, current_frame_time)))

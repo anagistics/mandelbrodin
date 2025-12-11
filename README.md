@@ -37,6 +37,8 @@ Additionally, this is an exercise in _vibe_ coding using Anthropic's Claude Code
 ### 💾 Save and Share
 - **Bookmarks**: Save and reload your favorite locations
 - **Ultra-Fast GPU Export**: Export up to 16K resolution (132 megapixels) in under 3 seconds
+- **Background Export**: CPU exports run in separate thread - UI stays responsive during export
+- **Real-Time Progress**: Live progress bar with stage tracking (Computing → Encoding → Complete)
 - **Configurable Compression**: Choose speed vs file size with 10 compression levels
 - **PNG Format**: Lossless compression with libpng (3.6× faster than original implementation)
 - Preset interesting locations included
@@ -44,6 +46,7 @@ Additionally, this is an exercise in _vibe_ coding using Anthropic's Claude Code
 ### 🖥️ Modern UI
 - Clean tabbed interface (Controls, Bookmarks, Export)
 - Real-time computation time display
+- Export progress bar with stage indicators and elapsed time
 - Adjustable iteration counts
 - Help overlay (Press F1)
 

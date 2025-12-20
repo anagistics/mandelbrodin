@@ -300,16 +300,22 @@ export_image_compute :: proc(r: ^Renderer, state: ^app.App_State, width, height:
 	gl.BindTexture(gl.TEXTURE_2D, output_texture)
 	gl.GetTexImage(gl.TEXTURE_2D, 0, gl.RGBA, gl.UNSIGNED_BYTE, raw_data(pixels))
 
-	// Convert RGBA bytes to u32 pixels (0xAARRGGBB format)
+	// Convert RGBA bytes to u32 pixels (0xAARRGGBB format) and flip Y
 	pixels_u32 := make([]u32, width * height)
 	defer delete(pixels_u32)
 
-	for i := 0; i < width * height; i += 1 {
-		r := u32(pixels[i * 4 + 0])
-		g := u32(pixels[i * 4 + 1])
-		b := u32(pixels[i * 4 + 2])
-		a := u32(pixels[i * 4 + 3])
-		pixels_u32[i] = (a << 24) | (r << 16) | (g << 8) | b
+	for y in 0 ..< height {
+		for x in 0 ..< width {
+			// Flip Y coordinate (OpenGL is bottom-left, PNG is top-left)
+			src_idx := (height - 1 - y) * width + x
+			dst_idx := y * width + x
+
+			r := u32(pixels[src_idx * 4 + 0])
+			g := u32(pixels[src_idx * 4 + 1])
+			b := u32(pixels[src_idx * 4 + 2])
+			a := u32(pixels[src_idx * 4 + 3])
+			pixels_u32[dst_idx] = (a << 24) | (r << 16) | (g << 8) | b
+		}
 	}
 
 	// Save to file
@@ -325,4 +331,25 @@ export_image_compute :: proc(r: ^Renderer, state: ^app.App_State, width, height:
 	}
 
 	return success
+}
+
+// Export thumbnail-sized image for bookmarks (128×96)
+// Routes to appropriate export path based on render mode
+// Takes rawptr instead of ^Renderer to avoid cyclic imports when used as callback
+export_thumbnail :: proc(
+	renderer: rawptr,
+	state: ^app.App_State,
+	width, height: int,
+	filepath: string,
+) -> bool {
+	r := cast(^Renderer)renderer
+
+	// Route to appropriate export based on render mode
+	if state.render_mode == .Mode_3D && r.renderer_3d_available {
+		return export_image_3d(r, state, width, height, filepath)
+	} else if r.compute_available {
+		return export_image_compute(r, state, width, height, filepath, 6)
+	} else {
+		return export_image_2d(state, width, height, filepath)
+	}
 }

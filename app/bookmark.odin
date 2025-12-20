@@ -3,7 +3,10 @@ package app
 import "core:encoding/json"
 import "core:fmt"
 import "core:os"
+import "core:strings"
 import "core:time"
+import stbi "vendor:stb/image"
+import gl "vendor:OpenGL"
 
 // View state for saving/loading
 View_State :: struct {
@@ -33,10 +36,20 @@ View_State :: struct {
 	created_at:          string `json:"created_at,omitempty"`,
 }
 
+// Thumbnail data for visual bookmark preview
+Bookmark_Thumbnail :: struct {
+	texture_id: u32,     // OpenGL texture handle (0 if not loaded)
+	width:      i32,     // Thumbnail dimensions (128)
+	height:     i32,     // Thumbnail dimensions (96)
+	filepath:   string,  // Path to .png file
+	loaded:     bool,    // Whether texture is currently loaded on GPU
+}
+
 // Bookmark entry for UI display
 Bookmark :: struct {
-	filename: string,
-	view:     View_State,
+	filename:  string,
+	view:      View_State,
+	thumbnail: Bookmark_Thumbnail,  // Thumbnail preview
 }
 
 // Save current view to JSON file
@@ -105,6 +118,82 @@ save_view :: proc(state: ^App_State, filepath: string, name: string = "", camera
 	}
 
 	return true
+}
+
+// Thumbnail export procedure type (to avoid cyclic imports)
+Thumbnail_Export_Proc :: #type proc(renderer: rawptr, state: ^App_State, width, height: int, filepath: string) -> bool
+
+// Generate thumbnail for bookmark at 128×96 resolution
+// export_proc should be renderer.export_thumbnail (passed to avoid cyclic import)
+generate_bookmark_thumbnail :: proc(
+	state: ^App_State,
+	bookmark_name: string,
+	r: rawptr,  // ^renderer.Renderer
+	export_proc: Thumbnail_Export_Proc,
+) -> string {
+	THUMBNAIL_WIDTH :: 128
+	THUMBNAIL_HEIGHT :: 96
+
+	thumbnail_path := fmt.tprintf("%s/%s.png", state.bookmarks_dir, bookmark_name)
+
+	if r != nil && export_proc != nil {
+		success := export_proc(r, state, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT, thumbnail_path)
+
+		if success {
+			return thumbnail_path
+		} else {
+			fmt.eprintln("Warning: Failed to generate thumbnail for:", bookmark_name)
+		}
+	}
+
+	return ""
+}
+
+// Load thumbnail PNG and upload to GPU texture
+load_thumbnail :: proc(thumbnail: ^Bookmark_Thumbnail) -> bool {
+	if !os.exists(thumbnail.filepath) {
+		return false
+	}
+
+	// Load PNG using stb_image
+	width, height, channels: i32
+	filepath_cstr := strings.clone_to_cstring(thumbnail.filepath)
+	defer delete(filepath_cstr)
+
+	pixels := stbi.load(filepath_cstr, &width, &height, &channels, 4) // Force RGBA
+	if pixels == nil {
+		return false
+	}
+	defer stbi.image_free(pixels)
+
+	// Create OpenGL texture
+	gl.GenTextures(1, &thumbnail.texture_id)
+	gl.BindTexture(gl.TEXTURE_2D, thumbnail.texture_id)
+
+	// Set texture parameters
+	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+
+	// Upload to GPU
+	gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
+
+	// Store dimensions and mark as loaded
+	thumbnail.width = width
+	thumbnail.height = height
+	thumbnail.loaded = true
+
+	return true
+}
+
+// Unload thumbnail from GPU
+unload_thumbnail :: proc(thumbnail: ^Bookmark_Thumbnail) {
+	if thumbnail.texture_id != 0 {
+		gl.DeleteTextures(1, &thumbnail.texture_id)
+		thumbnail.texture_id = 0
+	}
+	thumbnail.loaded = false
 }
 
 // Load view from JSON file
@@ -194,6 +283,8 @@ load_bookmarks :: proc(state: ^App_State) {
 		delete(bookmark.view.name)
 		delete(bookmark.view.created_at)
 		delete(bookmark.view.palette)
+		unload_thumbnail(&bookmark.thumbnail)
+		delete(bookmark.thumbnail.filepath)
 	}
 	clear(&state.bookmarks)
 
@@ -230,10 +321,25 @@ load_bookmarks :: proc(state: ^App_State) {
 		filepath := fmt.tprintf("%s/%s", state.bookmarks_dir, name)
 		view, ok := load_view(filepath)
 		if ok {
+			// Extract bookmark name (without .json extension)
+			bookmark_name := name[:len(name) - 5]
+			thumbnail_path := fmt.tprintf("%s/%s.png", state.bookmarks_dir, bookmark_name)
+
 			bookmark := Bookmark {
 				filename = fmt.aprintf("%s", name),
 				view     = view,
+				thumbnail = Bookmark_Thumbnail {
+					texture_id = 0,
+					width      = 128,
+					height     = 96,
+					filepath   = fmt.aprintf("%s", thumbnail_path),
+					loaded     = false,
+				},
 			}
+
+			// Try to load thumbnail (silent failure if missing)
+			load_thumbnail(&bookmark.thumbnail)
+
 			append(&state.bookmarks, bookmark)
 		}
 	}
@@ -241,16 +347,27 @@ load_bookmarks :: proc(state: ^App_State) {
 
 // Save current view as bookmark
 // camera parameter should be ^Camera_3D from renderer package (passed as rawptr to avoid cyclic import)
-save_bookmark :: proc(state: ^App_State, filename: string, name: string = "", camera: rawptr = nil) {
+// renderer parameter should be ^renderer.Renderer (passed as rawptr to avoid cyclic import)
+// export_proc should be renderer.export_thumbnail (passed to avoid cyclic import)
+save_bookmark :: proc(state: ^App_State, filename: string, name: string = "", camera: rawptr = nil, renderer: rawptr = nil, export_proc: Thumbnail_Export_Proc = nil) {
 	// Ensure .json extension
 	filepath: string
+	bookmark_name: string
+
 	if len(filename) < 5 || filename[len(filename) - 5:] != ".json" {
 		filepath = fmt.tprintf("%s/%s.json", state.bookmarks_dir, filename)
+		bookmark_name = filename
 	} else {
 		filepath = fmt.tprintf("%s/%s", state.bookmarks_dir, filename)
+		bookmark_name = filename[:len(filename) - 5]
 	}
 
 	if save_view(state, filepath, name, camera) {
+		// Generate thumbnail after successful save
+		if renderer != nil && export_proc != nil {
+			generate_bookmark_thumbnail(state, bookmark_name, renderer, export_proc)
+		}
+
 		load_bookmarks(state) // Reload bookmarks
 	}
 }
@@ -261,8 +378,17 @@ delete_bookmark :: proc(state: ^App_State, index: int) {
 		return
 	}
 
-	filepath := fmt.tprintf("%s/%s", state.bookmarks_dir, state.bookmarks[index].filename)
+	bookmark := &state.bookmarks[index]
+
+	// Delete JSON file
+	filepath := fmt.tprintf("%s/%s", state.bookmarks_dir, bookmark.filename)
 	os.remove(filepath)
+
+	// Delete thumbnail PNG file
+	if len(bookmark.thumbnail.filepath) > 0 {
+		os.remove(bookmark.thumbnail.filepath)
+	}
+
 	load_bookmarks(state) // Reload bookmarks
 }
 
@@ -289,4 +415,41 @@ update_bookmark_name :: proc(state: ^App_State, index: int, new_name: string, ca
 	if save_view(state, filepath, new_name, camera) {
 		load_bookmarks(state) // Reload bookmarks to refresh the display
 	}
+}
+
+// Regenerate thumbnail for existing bookmark
+// Loads the bookmark, renders it, and saves new thumbnail
+// renderer parameter should be ^renderer.Renderer (passed as rawptr to avoid cyclic import)
+// export_proc should be renderer.export_thumbnail (passed to avoid cyclic import)
+regenerate_bookmark_thumbnail :: proc(
+	state: ^App_State,
+	index: int,
+	renderer: rawptr,
+	export_proc: Thumbnail_Export_Proc,
+) -> bool {
+	if index < 0 || index >= len(state.bookmarks) {
+		return false
+	}
+
+	bookmark := &state.bookmarks[index]
+
+	// Extract bookmark name from filename
+	name := bookmark.filename
+	if len(name) >= 5 && name[len(name) - 5:] == ".json" {
+		name = name[:len(name) - 5]
+	}
+
+	// Generate new thumbnail
+	thumbnail_path := generate_bookmark_thumbnail(state, name, renderer, export_proc)
+
+	if len(thumbnail_path) > 0 {
+		// Reload thumbnail
+		unload_thumbnail(&bookmark.thumbnail)
+		delete(bookmark.thumbnail.filepath)
+		bookmark.thumbnail.filepath = fmt.aprintf("%s", thumbnail_path)
+		load_thumbnail(&bookmark.thumbnail)
+		return true
+	}
+
+	return false
 }

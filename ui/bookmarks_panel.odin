@@ -20,7 +20,9 @@ imgui.Text("Bookmarks")
 
 		// Pass camera if in 3D mode
 		camera_ptr := &r.renderer_3d.camera if r.renderer_3d_available else nil
-		app.save_bookmark(state, filename, name, camera_ptr)
+
+		// Pass renderer and export procedure for thumbnail generation
+		app.save_bookmark(state, filename, name, camera_ptr, r, renderer.export_thumbnail)
 
 		delete(filename)
 		delete(name)
@@ -77,14 +79,40 @@ imgui.Text("Bookmarks")
 					}
 				}
 			} else {
-				// Normal selectable item
-				if imgui.Selectable(fmt.ctprintf("%s##%d", display_name, i), is_selected) {
+				// Display thumbnail before name
+				thumbnail_clicked := false
+				if bookmark.thumbnail.loaded && bookmark.thumbnail.texture_id != 0 {
+					// Use ImageButton for clickable thumbnail
+					if imgui.ImageButton(
+						fmt.ctprintf("##thumbnail_%d", i),
+						u64(bookmark.thumbnail.texture_id),
+						imgui.Vec2{128, 96},
+					) {
+						thumbnail_clicked = true
+					}
+					imgui.SameLine()
+					imgui.BeginGroup()
+				} else {
+					// Placeholder for missing thumbnail
+					imgui.Dummy(imgui.Vec2{128, 96})
+					// Check if placeholder was clicked
+					if imgui.IsItemClicked(.Left) {
+						thumbnail_clicked = true
+					}
+					imgui.SameLine()
+					imgui.BeginGroup()
+				}
+
+				// Normal selectable item (or thumbnail was clicked)
+				if imgui.Selectable(fmt.ctprintf("%s##%d", display_name, i), is_selected) || thumbnail_clicked {
 					state.selected_bookmark = i
 					camera_ptr := &r.renderer_3d.camera if r.renderer_3d_available else nil
 					app.apply_view(state, bookmark.view, camera_ptr)
 					app.history_save(state)
 					state.needs_recompute = true  // Force recompute when loading bookmark
 				}
+
+				imgui.EndGroup()
 
 				// Detect double-click to enter edit mode
 				if imgui.IsItemHovered() && imgui.IsMouseDoubleClicked(.Left) {

@@ -129,7 +129,7 @@ Render_control_panel_content :: proc(state: ^app.App_State, width: int, height: 
 		if imgui.Combo("##palette", &current_palette, palette_options, i32(len(state.palettes))) {
 			selected_palette := state.palettes[current_palette]
 			app.history_save(state)
-			app.set_palette(state, selected_palette.name)
+			_ = app.set_palette(state, selected_palette.name) // Should always be valid
 		}
 	} else {
 		imgui.TextDisabled("No palettes loaded")

@@ -107,7 +107,19 @@ imgui.Text("Bookmarks")
 				if imgui.Selectable(fmt.ctprintf("%s##%d", display_name, i), is_selected) || thumbnail_clicked {
 					state.selected_bookmark = i
 					camera_ptr := &r.renderer_3d.camera if r.renderer_3d_available else nil
-					app.apply_view(state, bookmark.view, camera_ptr)
+					palette_corrected := app.apply_view(state, bookmark.view, camera_ptr)
+
+					// If palette was corrected (fallback to default), save the correction
+					if palette_corrected {
+						fmt.printfln("Bookmark '%s' had invalid palette, correcting to default", bookmark.filename)
+						if app.correct_bookmark_palette(state, bookmark.filename) {
+							// Reload bookmarks to reflect the correction
+							app.load_bookmarks(state)
+							// Adjust selected index if needed (list may have reordered)
+							state.selected_bookmark = i
+						}
+					}
+
 					app.history_save(state)
 					state.needs_recompute = true  // Force recompute when loading bookmark
 				}

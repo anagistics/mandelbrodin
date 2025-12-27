@@ -217,7 +217,8 @@ load_view :: proc(filepath: string) -> (View_State, bool) {
 
 // Apply loaded view to app state
 // camera parameter should be ^Camera_3D from renderer package (passed as rawptr to avoid cyclic import)
-apply_view :: proc(state: ^App_State, view: View_State, camera: rawptr = nil) {
+// Returns true if palette was corrected (fallback to default occurred)
+apply_view :: proc(state: ^App_State, view: View_State, camera: rawptr = nil) -> bool {
 	// Apply 2D parameters
 	state.center_x = view.center_x
 	state.center_y = view.center_y
@@ -226,7 +227,7 @@ apply_view :: proc(state: ^App_State, view: View_State, camera: rawptr = nil) {
 	state.max_iterations = view.max_iterations
 	state.use_smooth_coloring = view.use_smooth_coloring
 	state.use_adaptive_coloring = view.use_adaptive_coloring
-	set_palette(state, view.palette)
+	palette_corrected := set_palette(state, view.palette)
 
 	// Apply render mode
 	if view.render_mode == "3D" {
@@ -273,6 +274,43 @@ apply_view :: proc(state: ^App_State, view: View_State, camera: rawptr = nil) {
 		cam.target_elevation = view.camera_elevation
 		cam.target_distance = view.camera_distance
 	}
+
+	return palette_corrected
+}
+
+// Correct the palette in a bookmark file to use the current palette
+// This is used when a bookmark references a non-existent palette
+correct_bookmark_palette :: proc(state: ^App_State, bookmark_filename: string) -> bool {
+	filepath := fmt.tprintf("%s/%s", state.bookmarks_dir, bookmark_filename)
+
+	// Load the existing view
+	view, ok := load_view(filepath)
+	if !ok {
+		fmt.eprintln("Failed to load bookmark for correction:", bookmark_filename)
+		return false
+	}
+
+	// Update the palette to the current (corrected) palette
+	old_palette := view.palette
+	view.palette = state.palette
+
+	// Save the corrected view back to the file
+	// Use save_view with the existing metadata
+	data, err := json.marshal(view, {pretty = true, use_spaces = true, spaces = 2})
+	if err != nil {
+		fmt.eprintln("Failed to marshal corrected bookmark:", err)
+		return false
+	}
+	defer delete(data)
+
+	success := os.write_entire_file(filepath, data)
+	if !success {
+		fmt.eprintln("Failed to write corrected bookmark:", filepath)
+		return false
+	}
+
+	fmt.printfln("Corrected bookmark '%s': palette '%s' -> '%s'", bookmark_filename, old_palette, state.palette)
+	return true
 }
 
 // Load all bookmarks from directory

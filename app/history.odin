@@ -63,7 +63,7 @@ history_back :: proc(state: ^App_State) -> bool {
 	state.rotation = entry.rotation
 	state.max_iterations = entry.max_iterations
 	state.use_smooth_coloring = entry.use_smooth_coloring
-	set_palette(state, entry.palette)
+	_ = set_palette(state, entry.palette) // Ignore if palette no longer exists, will use default
 	state.navigating_history = false
 
 	return true
@@ -85,7 +85,7 @@ history_forward :: proc(state: ^App_State) -> bool {
 	state.rotation = entry.rotation
 	state.max_iterations = entry.max_iterations
 	state.use_smooth_coloring = entry.use_smooth_coloring
-	set_palette(state, entry.palette)
+	_ = set_palette(state, entry.palette) // Ignore if palette no longer exists, will use default
 	state.navigating_history = false
 
 	return true

@@ -200,7 +200,7 @@ main :: proc() {
 	}
 
 	// Set initial palette (will use loaded palette or fall back to default)
-	app.set_palette(&state, "Classic")
+	_ = app.set_palette(&state, "Classic") // Classic should always exist
 
 	// Save initial state to history
 	app.history_save(&state)

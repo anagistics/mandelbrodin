@@ -22,17 +22,20 @@ Export_Stage :: enum {
 }
 
 // Set the current palette by name, falling back to default if not found
-set_palette :: proc(state: ^App_State, palette_name: string) {
+// Returns true if fallback to default occurred
+set_palette :: proc(state: ^App_State, palette_name: string) -> bool {
 	palette, found := visual.find_palette(state.palettes[:], palette_name)
 	if found {
 		state.palette = palette_name
 		state.current_palette = palette
 		state.needs_recompute = true
+		return false // No fallback needed
 	} else {
 		fmt.eprintln("Warning: Palette not found:", palette_name, "- using default")
 		state.palette = "Classic"
 		state.current_palette = visual.DEFAULT_PALETTE
 		state.needs_recompute = true
+		return true // Fallback occurred
 	}
 }
 

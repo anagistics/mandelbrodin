@@ -36,3 +36,6 @@ _claude/*
 
 # Ignore test files
 test_*
+
+# Python helper/test files
+*.py

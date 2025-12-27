@@ -150,10 +150,11 @@ imgui.Text("Export High Resolution")
 
 			// Determine export mode:
 			// - For 2D mode with CPU rendering selected: use async (background thread)
+			// - For 2D mode with adaptive coloring: use async (requires CPU two-pass algorithm)
 			// - For 2D mode with GPU compute: use sync (OpenGL context not thread-safe)
 			// - For 3D mode: use sync (OpenGL rendering required)
 			// Respect user's CPU/GPU selection: if user chose CPU mode, use async even if GPU available
-			use_async := (state.render_mode == .Mode_2D && !state.use_gpu)
+			use_async := (state.render_mode == .Mode_2D && (!state.use_gpu || state.use_adaptive_coloring))
 
 			if use_async {
 				// Safety check: ensure no existing thread (should not happen due to button disable)

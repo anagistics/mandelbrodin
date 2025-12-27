@@ -347,6 +347,9 @@ export_thumbnail :: proc(
 	// Route to appropriate export based on render mode
 	if state.render_mode == .Mode_3D && r.renderer_3d_available {
 		return export_image_3d(r, state, width, height, filepath)
+	} else if state.use_adaptive_coloring {
+		// Adaptive coloring requires CPU path (two-pass algorithm)
+		return export_image_2d(state, width, height, filepath)
 	} else if r.compute_available {
 		return export_image_compute(r, state, width, height, filepath, 6)
 	} else {

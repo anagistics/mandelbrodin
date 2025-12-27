@@ -195,11 +195,11 @@ main :: proc() {
 	state.palettes = visual.load_palettes(state.palettes_dir)
 	if len(state.palettes) == 0 {
 		fmt.eprintln("Warning: No palettes loaded, using default palette")
-		state.palette = "Classic"
-		state.current_palette = visual.DEFAULT_PALETTE
 	}
 
 	// Set initial palette (will use loaded palette or fall back to default)
+	// Initialize palette as empty string before first set_palette call
+	state.palette = ""
 	_ = app.set_palette(&state, "Classic") // Classic should always exist
 
 	// Save initial state to history

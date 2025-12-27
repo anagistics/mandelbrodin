@@ -3,8 +3,71 @@ package ui
 import app "../app"
 import renderer "../renderer"
 import "core:fmt"
+import "core:slice"
+import "core:strconv"
 import "core:strings"
 import imgui "vendor:imgui"
+
+// Extract view number from bookmark filename (e.g., "view_5.json" -> 5)
+// Returns 0 if the filename doesn't match the pattern
+extract_view_number :: proc(filename: string) -> int {
+	if !strings.has_prefix(filename, "view_") {
+		return 0
+	}
+
+	num_str := filename[5:]  // Skip "view_"
+	if strings.has_suffix(num_str, ".json") {
+		num_str = num_str[:len(num_str)-5]  // Remove ".json"
+	}
+
+	num, ok := strconv.parse_int(num_str)
+	if ok {
+		return num
+	}
+
+	return 0
+}
+
+// Find the smallest unused view number using binary interval search
+// Collects all used numbers, sorts them, and finds the first gap
+find_next_view_number :: proc(bookmarks: []app.Bookmark) -> int {
+	if len(bookmarks) == 0 {
+		return 1
+	}
+
+	// Collect all used view numbers
+	used_numbers := make([dynamic]int, 0, len(bookmarks))
+	defer delete(used_numbers)
+
+	for bookmark in bookmarks {
+		num := extract_view_number(bookmark.filename)
+		if num > 0 {
+			append(&used_numbers, num)
+		}
+	}
+
+	if len(used_numbers) == 0 {
+		return 1
+	}
+
+	// Sort the used numbers using Odin's built-in sort
+	slice.sort(used_numbers[:])
+
+	// Find the first gap in the sequence starting from 1
+	expected := 1
+	for num in used_numbers {
+		if num == expected {
+			expected += 1
+		} else if num > expected {
+			// Found a gap
+			return expected
+		}
+		// If num < expected, it's a duplicate or already checked, skip it
+	}
+
+	// No gap found, use the next number after the maximum
+	return expected
+}
 
 // Render just the content of the bookmarks panel (for use in tabs)
 Render_bookmarks_panel_content :: proc(r: ^renderer.Renderer, state: ^app.App_State, width: int, height: int) {
@@ -14,9 +77,11 @@ imgui.Text("Bookmarks")
 
 	// Save current view button
 	if imgui.Button("Save Current View", imgui.Vec2{-1, 0}) {
-		// Generate filename from timestamp
-		filename := fmt.aprintf("view_%d", len(state.bookmarks) + 1)
-		name := fmt.aprintf("View %d", len(state.bookmarks) + 1)
+		// Find the smallest unused view number
+		next_view_num := find_next_view_number(state.bookmarks[:])
+
+		filename := fmt.aprintf("view_%d", next_view_num)
+		name := fmt.aprintf("View %d", next_view_num)
 
 		// Pass camera if in 3D mode
 		camera_ptr := &r.renderer_3d.camera if r.renderer_3d_available else nil

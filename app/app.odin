@@ -26,13 +26,18 @@ Export_Stage :: enum {
 set_palette :: proc(state: ^App_State, palette_name: string) -> bool {
 	palette, found := visual.find_palette(state.palettes[:], palette_name)
 	if found {
-		state.palette = palette_name
+		// Clone the palette name to ensure it persists
+		if state.palette != palette_name {
+			delete(state.palette) // Free old string if it was allocated
+			state.palette = strings.clone(palette_name)
+		}
 		state.current_palette = palette
 		state.needs_recompute = true
 		return false // No fallback needed
 	} else {
 		fmt.eprintln("Warning: Palette not found:", palette_name, "- using default")
-		state.palette = "Classic"
+		delete(state.palette) // Free old string
+		state.palette = strings.clone("Classic")
 		state.current_palette = visual.DEFAULT_PALETTE
 		state.needs_recompute = true
 		return true // Fallback occurred

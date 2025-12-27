@@ -3,6 +3,7 @@ package app
 import "core:encoding/json"
 import "core:fmt"
 import "core:os"
+import "core:slice"
 import "core:strings"
 import "core:time"
 import stbi "vendor:stb/image"
@@ -381,6 +382,11 @@ load_bookmarks :: proc(state: ^App_State) {
 			append(&state.bookmarks, bookmark)
 		}
 	}
+
+	// Sort bookmarks by name (alphabetically)
+	slice.sort_by(state.bookmarks[:], proc(a, b: Bookmark) -> bool {
+		return a.view.name < b.view.name
+	})
 }
 
 // Save current view as bookmark

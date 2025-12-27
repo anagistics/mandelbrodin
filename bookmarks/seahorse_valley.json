@@ -1,9 +1,21 @@
 {
-  "center_x": -0.743643887037151,
-  "center_y": 0.131825904205330,
-  "zoom": 50.0,
+  "center_x": -0.7436438870371510,
+  "center_y": 0.1318259042053300,
+  "zoom": 50.0000000000000000,
+  "rotation": 0.0000000000000000,
   "max_iterations": 256,
   "palette": "Classic",
+  "use_smooth_coloring": false,
+  "use_adaptive_coloring": false,
+  "render_mode": "2D",
+  "camera_azimuth": 0.00000000,
+  "camera_elevation": 0.00000000,
+  "camera_distance": 0.00000000,
+  "camera_target_x": 587.87756348,
+  "camera_target_y": 480.00003052,
+  "camera_target_z": 587.87756348,
+  "height_scale_3d": 2.00000000,
+  "column_width_3d": 0.89999998,
   "name": "Seahorse Valley",
-  "created_at": "2025-11-30T00:00:00Z"
+  "created_at": "2025-12-27 20:59:34.008816338 +0000 UTC"
 }

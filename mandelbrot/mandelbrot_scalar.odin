@@ -3,8 +3,24 @@ package mandelbrot
 import app "../app"
 import visual "../visual"
 import "core:math"
+import "core:math/linalg"
 import "core:sync"
 import "core:thread"
+
+// Create a 3x3 transformation matrix combining rotation, scale, and translation
+// This transforms normalized screen coordinates to world coordinates
+create_transform_matrix :: proc(center_x, center_y, scale_x, scale_y, rotation: f64) -> matrix[3, 3]f64 {
+	cos_r := math.cos(rotation)
+	sin_r := math.sin(rotation)
+
+	// Combined transformation matrix: Translate * Scale * Rotate
+	// Applied to normalized coordinates [-0.5, 0.5]
+	return matrix[3, 3]f64{
+		scale_x * cos_r,  scale_x * sin_r,   0,  // First row
+		-scale_y * sin_r, scale_y * cos_r,   0,  // Second row
+		center_x,         center_y,          1,  // Third row (translation + homogeneous)
+	}
+}
 
 // Scalar fallback version (for comparison/debugging)
 compute_scalar :: proc(state: ^app.App_State, width: int, height: int) {
@@ -60,11 +76,10 @@ compute_scalar_worker :: proc(t: ^thread.Thread) {
 	x0: [N]f64
 	y0: [N]f64
 
-	// Precompute rotation values
-	cos_r := math.cos(state.rotation)
-	sin_r := math.sin(state.rotation)
+	// Precompute transformation matrix (rotation + scale + translation)
 	scale_x := 3.5 / state.zoom
 	scale_y := 2.0 / state.zoom
+	transform := create_transform_matrix(state.center_x, state.center_y, scale_x, scale_y, state.rotation)
 
 	// Dynamically grab rows from the work queue
 	for {
@@ -84,16 +99,15 @@ compute_scalar_worker :: proc(t: ^thread.Thread) {
 			#unroll for i in 0 ..< N {
 				px[i] = base + i
 
-				// Convert to normalized coordinates
+				// Convert to normalized coordinates [-0.5, 0.5]
 				norm_x := f64(px[i]) / f64(width) - 0.5
 
-				// Apply rotation
-				rotated_x := norm_x * cos_r - norm_y * sin_r
-				rotated_y := norm_x * sin_r + norm_y * cos_r
+				// Apply transformation matrix (rotation + scale + translation)
+				point := linalg.Vector3f64{norm_x, norm_y, 1.0}  // Homogeneous coordinates
+				world_point := transform * point
 
-				// Scale to world coordinates
-				x0[i] = rotated_x * scale_x + state.center_x
-				y0[i] = rotated_y * scale_y + state.center_y
+				x0[i] = world_point.x
+				y0[i] = world_point.y
 
 				iterations, magnitude_sq := iterate(x0[i], y0[i], state.max_iterations)
 				color := visual.Compute_pixel_color(

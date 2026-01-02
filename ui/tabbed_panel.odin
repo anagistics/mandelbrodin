@@ -4,7 +4,13 @@ import app "../app"
 import renderer "../renderer"
 import imgui "vendor:imgui"
 
-Render_tabbed_panel :: proc(r: ^renderer.Renderer, state: ^app.App_State, x_offset: int, width: int, height: int) {
+Render_tabbed_panel :: proc(
+	r: ^renderer.Renderer,
+	state: ^app.App_State,
+	x_offset: int,
+	width: int,
+	height: int,
+) {
 	imgui.SetNextWindowPos(imgui.Vec2{f32(x_offset), 0}, .Once)
 	imgui.SetNextWindowSize(imgui.Vec2{f32(width), f32(height) - 20}, .Once)
 

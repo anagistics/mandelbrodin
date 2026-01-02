@@ -1,19 +1,19 @@
 package app
 
+import png "../vendor_libpng"
+import "core:c"
 import "core:fmt"
 import "core:strings"
-import "core:thread"
 import "core:sync"
-import "core:c"
+import "core:thread"
 import "core:time"
 import stbi "vendor:stb/image"
-import png "../vendor_libpng"
 
 foreign import libc "system:c"
 
 @(default_calling_convention = "c")
 foreign libc {
-	fopen  :: proc(filename: cstring, mode: cstring) -> rawptr ---
+	fopen :: proc(filename: cstring, mode: cstring) -> rawptr ---
 	fclose :: proc(stream: rawptr) -> c.int ---
 }
 
@@ -24,7 +24,7 @@ Export_Resolution :: struct {
 	height: int,
 }
 
-EXPORT_RESOLUTIONS := []Export_Resolution{
+EXPORT_RESOLUTIONS := []Export_Resolution {
 	{"1920x1080 (Full HD)", 1920, 1080},
 	{"2560x1440 (QHD)", 2560, 1440},
 	{"3840x2160 (4K)", 3840, 2160},
@@ -35,10 +35,10 @@ EXPORT_RESOLUTIONS := []Export_Resolution{
 
 // Thread data for parallel conversion
 Conversion_Thread_Data :: struct {
-	pixels:     []u32,
-	rgba_data:  []u8,
-	start_idx:  int,
-	end_idx:    int,
+	pixels:    []u32,
+	rgba_data: []u8,
+	start_idx: int,
+	end_idx:   int,
 }
 
 // Worker thread for ARGB → RGB conversion
@@ -58,7 +58,12 @@ convert_pixels_worker :: proc(t: ^thread.Thread) {
 }
 
 // Save PNG image using stb_image_write with optimizations
-save_png :: proc(pixels: []u32, width, height: int, filepath: string, state: ^App_State = nil) -> bool {
+save_png :: proc(
+	pixels: []u32,
+	width, height: int,
+	filepath: string,
+	state: ^App_State = nil,
+) -> bool {
 	NUM_THREADS :: 8
 
 	// Convert ARGB to RGB with multi-threaded optimization
@@ -68,7 +73,7 @@ save_png :: proc(pixels: []u32, width, height: int, filepath: string, state: ^Ap
 	pixel_count := width * height
 
 	// Multi-threaded conversion for better performance
-	if pixel_count > 100000 { // Only use threads for larger images (above ~300x300)
+	if pixel_count > 100000 { 	// Only use threads for larger images (above ~300x300)
 		threads: [NUM_THREADS]^thread.Thread
 		thread_data: [NUM_THREADS]Conversion_Thread_Data
 
@@ -82,7 +87,7 @@ save_png :: proc(pixels: []u32, width, height: int, filepath: string, state: ^Ap
 				end_idx = pixel_count // Last thread handles remainder
 			}
 
-			thread_data[i] = Conversion_Thread_Data{
+			thread_data[i] = Conversion_Thread_Data {
 				pixels    = pixels,
 				rgba_data = rgb_data, // reusing name but it's RGB now
 				start_idx = start_idx,
@@ -139,7 +144,13 @@ save_png :: proc(pixels: []u32, width, height: int, filepath: string, state: ^Ap
 }
 
 // Save PNG image using libpng with compression level control
-save_png_libpng :: proc(pixels: []u32, width, height: int, filepath: string, compression_level: int = 6, state: ^App_State = nil) -> bool {
+save_png_libpng :: proc(
+	pixels: []u32,
+	width, height: int,
+	filepath: string,
+	compression_level: u8 = 6,
+	state: ^App_State = nil,
+) -> bool {
 	NUM_THREADS :: 8
 
 	// Convert ARGB to RGB with multi-threaded optimization (same as stb version)
@@ -162,7 +173,7 @@ save_png_libpng :: proc(pixels: []u32, width, height: int, filepath: string, com
 				end_idx = pixel_count
 			}
 
-			thread_data[i] = Conversion_Thread_Data{
+			thread_data[i] = Conversion_Thread_Data {
 				pixels    = pixels,
 				rgba_data = rgb_data,
 				start_idx = start_idx,
@@ -285,7 +296,13 @@ save_png_libpng :: proc(pixels: []u32, width, height: int, filepath: string, com
 // compression_level: 0-9 (0=none, 1=fastest, 6=default, 9=best compression)
 //                    or -1 to use stb_image_write fallback
 // state: optional pointer to App_State for progress tracking
-export_image :: proc(pixels: []u32, width, height: int, filepath: string, compression_level: int = 1, state: ^App_State = nil) -> bool {
+export_image :: proc(
+	pixels: []u32,
+	width, height: int,
+	filepath: string,
+	compression_level: u8 = 1,
+	state: ^App_State = nil,
+) -> bool {
 	fmt.printfln("Saving %dx%d image to %s...", width, height, filepath)
 
 	// Update stage to Encoding if we have state
@@ -317,7 +334,7 @@ Export_Thread_Data :: struct {
 	width:             int,
 	height:            int,
 	filepath:          string,
-	compression_level: int,
+	compression_level: u8,
 	compute_func:      Compute_Func, // Function to compute pixels
 
 	// Thread handle
@@ -351,7 +368,14 @@ export_cpu_worker :: proc(t: ^thread.Thread) {
 	fmt.printfln("Computation took %.2f ms", time.duration_milliseconds(duration))
 
 	// Save to file (this also updates state.export_progress)
-	success := export_image(pixels, data.width, data.height, data.filepath, data.compression_level, state)
+	success := export_image(
+		pixels,
+		data.width,
+		data.height,
+		data.filepath,
+		data.compression_level,
+		state,
+	)
 
 	// Update completion status
 	sync.atomic_store(&data.success, success)
@@ -367,7 +391,13 @@ export_cpu_worker :: proc(t: ^thread.Thread) {
 // Start a background export thread (for CPU exports only)
 // Returns thread data that must be polled and freed by caller
 // compute_func: function to compute pixels (e.g., mb.Compute)
-export_image_async :: proc(state: ^App_State, width, height: int, filepath: string, compression_level: int, compute_func: Compute_Func) -> ^Export_Thread_Data {
+export_image_async :: proc(
+	state: ^App_State,
+	width, height: int,
+	filepath: string,
+	compression_level: u8,
+	compute_func: Compute_Func,
+) -> ^Export_Thread_Data {
 	// Allocate thread data (caller must free after thread completes)
 	data := new(Export_Thread_Data)
 	data.state = state

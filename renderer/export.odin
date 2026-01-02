@@ -1,15 +1,20 @@
 package renderer
 
+import camera "."
 import app "../app"
 import mb "../mandelbrot"
-import camera "."
 import "core:fmt"
 import "core:time"
 import gl "vendor:OpenGL"
 
 // Export current view to high-resolution image
 // Routes to 2D or 3D export based on current render mode
-export_image :: proc(r: ^Renderer, state: ^app.App_State, width, height: int, filepath: string) -> bool {
+export_image :: proc(
+	r: ^Renderer,
+	state: ^app.App_State,
+	width, height: int,
+	filepath: string,
+) -> bool {
 	// Check render mode and route accordingly
 	if state.render_mode == .Mode_3D && r.renderer_3d_available {
 		return export_image_3d(r, state, width, height, filepath)
@@ -56,7 +61,12 @@ export_image_2d :: proc(state: ^app.App_State, width, height: int, filepath: str
 }
 
 // Export 3D view (render to framebuffer and capture)
-export_image_3d :: proc(r: ^Renderer, state: ^app.App_State, width, height: int, filepath: string) -> bool {
+export_image_3d :: proc(
+	r: ^Renderer,
+	state: ^app.App_State,
+	width, height: int,
+	filepath: string,
+) -> bool {
 	fmt.printfln("Exporting 3D %dx%d image to %s...", width, height, filepath)
 
 	// Update stage to Computing
@@ -75,7 +85,17 @@ export_image_3d :: proc(r: ^Renderer, state: ^app.App_State, width, height: int,
 	color_texture: u32
 	gl.GenTextures(1, &color_texture)
 	gl.BindTexture(gl.TEXTURE_2D, color_texture)
-	gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, i32(width), i32(height), 0, gl.RGBA, gl.UNSIGNED_BYTE, nil)
+	gl.TexImage2D(
+		gl.TEXTURE_2D,
+		0,
+		gl.RGBA8,
+		i32(width),
+		i32(height),
+		0,
+		gl.RGBA,
+		gl.UNSIGNED_BYTE,
+		nil,
+	)
 	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
 	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
 	gl.FramebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, color_texture, 0)
@@ -117,7 +137,7 @@ export_image_3d :: proc(r: ^Renderer, state: ^app.App_State, width, height: int,
 
 	// Scale camera distance based on resolution increase
 	// The scene size grows proportionally with resolution, so camera must move back
-	screen_width :: 800  // From appelman.odin
+	screen_width :: 800 // From appelman.odin
 	screen_height :: 600
 	screen_max := max(screen_width, screen_height)
 	export_max := max(width, height)
@@ -237,7 +257,13 @@ set_compute_uniforms :: proc(r: ^Renderer, state: ^app.App_State, width, height:
 // Export using GPU compute shader (much faster than CPU for 2D)
 // compression_level: 0-9 (0=none, 1=fastest, 6=default, 9=best) or -1 for stb_image_write
 // Note: For 3D mode, this delegates to export_image which renders the 3D scene
-export_image_compute :: proc(r: ^Renderer, state: ^app.App_State, width, height: int, filepath: string, compression_level: int = 1) -> bool {
+export_image_compute :: proc(
+	r: ^Renderer,
+	state: ^app.App_State,
+	width, height: int,
+	filepath: string,
+	compression_level: u8 = 1,
+) -> bool {
 	// If in 3D mode, use 3D export path
 	if state.render_mode == .Mode_3D && r.renderer_3d_available {
 		return export_image(r, state, width, height, filepath)
@@ -294,7 +320,7 @@ export_image_compute :: proc(r: ^Renderer, state: ^app.App_State, width, height:
 	state.export_stage = .Encoding
 
 	// Read pixels from texture
-	pixels := make([]u8, width * height * 4)  // RGBA format
+	pixels := make([]u8, width * height * 4) // RGBA format
 	defer delete(pixels)
 
 	gl.BindTexture(gl.TEXTURE_2D, output_texture)

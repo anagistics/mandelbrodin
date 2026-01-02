@@ -1,16 +1,21 @@
 package ui
 
 import app "../app"
-import renderer "../renderer"
 import mb "../mandelbrot"
+import renderer "../renderer"
 import "core:fmt"
 import "core:strings"
 import "core:time"
 import imgui "vendor:imgui"
 
 // Render just the content of the export panel (for use in tabs)
-Render_export_panel_content :: proc(r: ^renderer.Renderer, state: ^app.App_State, width: int, height: int) {
-imgui.Text("Export High Resolution")
+Render_export_panel_content :: proc(
+	r: ^renderer.Renderer,
+	state: ^app.App_State,
+	width: int,
+	height: int,
+) {
+	imgui.Text("Export High Resolution")
 	imgui.Separator()
 
 	// Resolution selection
@@ -26,7 +31,12 @@ imgui.Text("Export High Resolution")
 	resolution_options := strings.to_cstring(&str_builder)
 
 	current_resolution := i32(state.export_resolution)
-	if imgui.Combo("##resolution", &current_resolution, resolution_options, i32(len(app.EXPORT_RESOLUTIONS))) {
+	if imgui.Combo(
+		"##resolution",
+		&current_resolution,
+		resolution_options,
+		i32(len(app.EXPORT_RESOLUTIONS)),
+	) {
 		state.export_resolution = int(current_resolution)
 	}
 
@@ -45,7 +55,7 @@ imgui.Text("Export High Resolution")
 	comp_builder := strings.builder_make()
 	defer strings.builder_destroy(&comp_builder)
 
-	compression_options := []string{
+	compression_options := []string {
 		"No compression (fastest, huge files)",
 		"Level 1 - Fast (recommended)",
 		"Level 2",
@@ -65,8 +75,13 @@ imgui.Text("Export High Resolution")
 	compression_labels := strings.to_cstring(&comp_builder)
 
 	current_compression := i32(state.export_compression)
-	if imgui.Combo("##compression", &current_compression, compression_labels, i32(len(compression_options))) {
-		state.export_compression = int(current_compression)
+	if imgui.Combo(
+		"##compression",
+		&current_compression,
+		compression_labels,
+		i32(len(compression_options)),
+	) {
+		state.export_compression = u8(current_compression)
 	}
 
 	// Show compression info
@@ -108,7 +123,9 @@ imgui.Text("Export High Resolution")
 
 	// Show preview of full path
 	if len(state.export_filename) > 0 {
-		imgui.TextDisabled(fmt.ctprintf("  -> %s", strings.clone_to_cstring(state.export_filename)))
+		imgui.TextDisabled(
+			fmt.ctprintf("  -> %s", strings.clone_to_cstring(state.export_filename)),
+		)
 	} else {
 		imgui.TextDisabled("  (enter filename)")
 	}
@@ -154,30 +171,42 @@ imgui.Text("Export High Resolution")
 			// - For 2D mode with GPU compute: use sync (OpenGL context not thread-safe)
 			// - For 3D mode: use sync (OpenGL rendering required)
 			// Respect user's CPU/GPU selection: if user chose CPU mode, use async even if GPU available
-			use_async := (state.render_mode == .Mode_2D && (!state.use_gpu || state.use_adaptive_coloring))
+			use_async :=
+				(state.render_mode == .Mode_2D && (!state.use_gpu || state.use_adaptive_coloring))
 
 			if use_async {
 				// Safety check: ensure no existing thread (should not happen due to button disable)
 				if state.export_thread != nil {
-					fmt.eprintln("WARNING: Export already in progress! Ignoring new export request.")
+					fmt.eprintln(
+						"WARNING: Export already in progress! Ignoring new export request.",
+					)
 					state.export_in_progress = false
 					state.export_stage = .Error
 					state.export_error = "Export already in progress"
 				} else {
 					// Start background export thread (CPU only)
-					state.export_thread = rawptr(app.export_image_async(
-						state,
-						resolution.width,
-						resolution.height,
-						output_filename,
-						state.export_compression,
-						mb.Compute, // Pass compute function
-					))
+					state.export_thread = rawptr(
+						app.export_image_async(
+							state,
+							resolution.width,
+							resolution.height,
+							output_filename,
+							state.export_compression,
+							mb.Compute, // Pass compute function
+						),
+					)
 					// Thread will update state.export_in_progress when done
 				}
 			} else {
 				// Synchronous export (GPU compute or 3D)
-				success := renderer.export_image_compute(r, state, resolution.width, resolution.height, output_filename, state.export_compression)
+				success := renderer.export_image_compute(
+					r,
+					state,
+					resolution.width,
+					resolution.height,
+					output_filename,
+					state.export_compression,
+				)
 
 				// Update final status
 				if success {
@@ -228,14 +257,19 @@ imgui.Text("Export High Resolution")
 
 		// Show error message if failed
 		if state.export_stage == .Error && len(state.export_error) > 0 {
-			imgui.TextColored({1.0, 0.3, 0.3, 1.0}, fmt.ctprintf("Error: %s", strings.clone_to_cstring(state.export_error)))
+			imgui.TextColored(
+				{1.0, 0.3, 0.3, 1.0},
+				fmt.ctprintf("Error: %s", strings.clone_to_cstring(state.export_error)),
+			)
 		}
 	}
 
 	imgui.Separator()
 
 	// Info
-	imgui.TextWrapped("Export renders the current view at high resolution and saves to PNG format. Higher resolutions take longer to compute.")
+	imgui.TextWrapped(
+		"Export renders the current view at high resolution and saves to PNG format. Higher resolutions take longer to compute.",
+	)
 
 	imgui.Separator()
 	imgui.TextDisabled("Note: Export uses GPU compute shader (or CPU fallback)")
@@ -248,7 +282,9 @@ imgui.Text("Export High Resolution")
 		imgui.Text("Export 3D Model (Experimental)")
 		imgui.Separator()
 
-		imgui.TextWrapped("Export the 3D visualization as an OBJ file for use with Blender, Maya, or other 3D software.")
+		imgui.TextWrapped(
+			"Export the 3D visualization as an OBJ file for use with Blender, Maya, or other 3D software.",
+		)
 
 		imgui.Separator()
 
@@ -272,9 +308,14 @@ imgui.Text("Export High Resolution")
 		model_res_labels := strings.to_cstring(&model_res_builder)
 
 		// Use export_resolution as temp storage for model resolution
-		@static model_resolution: i32 = 1 // Default to 400x300
+		@(static) model_resolution: i32 = 1 // Default to 400x300
 
-		if imgui.Combo("##model_resolution", &model_resolution, model_res_labels, i32(len(model_res_options))) {
+		if imgui.Combo(
+			"##model_resolution",
+			&model_resolution,
+			model_res_labels,
+			i32(len(model_res_options)),
+		) {
 			// Selection updated
 		}
 
@@ -283,13 +324,18 @@ imgui.Text("Export High Resolution")
 		// 3D model filename
 		imgui.Text("Model Filename")
 		model_input_buffer: [256]u8 = {}
-		@static model_filename: string = "mandelbrot_3d"
+		@(static) model_filename: string = "mandelbrot_3d"
 
 		for i in 0 ..< min(len(model_filename), 255) {
 			model_input_buffer[i] = model_filename[i]
 		}
 
-		if imgui.InputText("##model_filename", cstring(raw_data(model_input_buffer[:])), len(model_input_buffer), {}) {
+		if imgui.InputText(
+			"##model_filename",
+			cstring(raw_data(model_input_buffer[:])),
+			len(model_input_buffer),
+			{},
+		) {
 			null_pos := 0
 			for i in 0 ..< len(model_input_buffer) {
 				if model_input_buffer[i] == 0 {
@@ -301,7 +347,9 @@ imgui.Text("Export High Resolution")
 		}
 
 		if len(model_filename) > 0 {
-			imgui.TextDisabled(fmt.ctprintf("  -> %s.obj", strings.clone_to_cstring(model_filename)))
+			imgui.TextDisabled(
+				fmt.ctprintf("  -> %s.obj", strings.clone_to_cstring(model_filename)),
+			)
 		} else {
 			imgui.TextDisabled("  (enter filename)")
 		}
@@ -329,7 +377,13 @@ imgui.Text("Export High Resolution")
 				height_3d := model_res_heights[model_resolution]
 
 				// Export 3D model
-				success := renderer.export_3d_model_obj(r, state, width_3d, height_3d, output_filename)
+				success := renderer.export_3d_model_obj(
+					r,
+					state,
+					width_3d,
+					height_3d,
+					output_filename,
+				)
 
 				state.export_in_progress = false
 			}
@@ -340,12 +394,21 @@ imgui.Text("Export High Resolution")
 		}
 
 		imgui.Separator()
-		imgui.TextWrapped("Note: 3D model files can be very large. Use lower resolutions for faster exports and smaller files. OBJ files include vertex colors.")
+		imgui.TextWrapped(
+			"Note: 3D model files can be very large. Use lower resolutions for faster exports and smaller files. OBJ files include vertex colors.",
+		)
 	}
 }
 
 // Render export panel with its own window (for standalone use)
-Render_export_panel :: proc(r: ^renderer.Renderer, state: ^app.App_State, x_offset: int, y_offset: int, width: int, height: int) {
+Render_export_panel :: proc(
+	r: ^renderer.Renderer,
+	state: ^app.App_State,
+	x_offset: int,
+	y_offset: int,
+	width: int,
+	height: int,
+) {
 	imgui.SetNextWindowPos(imgui.Vec2{f32(x_offset), f32(y_offset)}, .Once)
 	imgui.SetNextWindowSize(imgui.Vec2{f32(width), f32(height) - 20}, .Once)
 
